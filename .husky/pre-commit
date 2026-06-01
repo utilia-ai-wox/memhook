@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+# Pre-commit: run lint-staged (prettier + eslint --fix on staged files only).
+# Husky v9: no need to source .husky/_/husky.sh anymore.
+
+npx lint-staged

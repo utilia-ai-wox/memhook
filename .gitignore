@@ -9,7 +9,10 @@ Thumbs.db
 coverage/
 .vitest-cache/
 
-# npm is the primary lockfile (committed); bun is optional for local dev.
+# Lockfiles are not committed: npm's cross-platform optional-dependency bug
+# (npm/cli#4828) breaks CI when a single-platform lockfile is committed, so CI
+# resolves dev deps fresh per-platform via `npm install`. Zero runtime deps.
+package-lock.json
 bun.lock
 
 # Private zones — never commit
