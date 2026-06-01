@@ -1,0 +1,374 @@
+/**
+ * Memhook router — UserPromptSubmit hook entry point.
+ *
+ * Port of ~/.claude/hooks/memory-guard.sh (Phase 0.5 r5, 2026-05-28).
+ *
+ * Pipeline:
+ *   1. Parse stdin: {"prompt", "cwd"}
+ *   2. Toggle gate (config.enabled)
+ *   3. Pre-filter trivial prompts (skip LLM entirely)
+ *   4. Catalog & API key checks
+ *   5. Local LRU cache (key: prompt + catalog_mtime + cwd + script_version)
+ *   6. Provider call (Haiku 4.5 default, ttl 1h ephemeral)
+ *   7. Parse JSON array of basenames, sanitise
+ *   8. Read selected files with cap-by-tokens fix (projected size check)
+ *   9. Emit {"hookSpecificOutput": {"additionalContext": "..."}}
+ *  10. Append JSONL log entry
+ *
+ * Fail-soft: every error path falls back to empty additionalContext.
+ * Never blocks Claude Code.
+ */
+
+import {
+  existsSync,
+  readFileSync,
+  statSync,
+  appendFileSync,
+  mkdirSync,
+  readdirSync,
+} from "node:fs";
+import { join, dirname, basename } from "node:path";
+import { LocalCache } from "./cache.js";
+import { loadConfig, type MemhookConfig } from "./config.js";
+import { PreFilter } from "./preFilter.js";
+import { AnthropicProvider } from "./providers/anthropic.js";
+
+const SAFE_BASENAME_RE = /^[A-Za-z0-9._-]+\.md$/;
+
+export interface HookInput {
+  prompt: string;
+  cwd?: string;
+}
+
+export interface HookOutput {
+  hookSpecificOutput: {
+    hookEventName: "UserPromptSubmit";
+    additionalContext: string;
+  };
+}
+
+interface LogEntry {
+  ts: string;
+  promptPreview: string;
+  selected: string[];
+  latencyMs: number;
+  tokensIn: number;
+  tokensOut: number;
+  cacheCreate: number;
+  cacheRead: number;
+  additionalSizeChars: number;
+  additionalSizeTokensEst: number;
+  status: string;
+}
+
+const EMPTY: HookOutput = {
+  hookSpecificOutput: {
+    hookEventName: "UserPromptSubmit",
+    additionalContext: "",
+  },
+};
+
+export async function route(
+  stdinJson: string,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<HookOutput> {
+  const config = loadConfig(env);
+  ensureDirs(config);
+  evictStale(config);
+
+  if (!config.enabled) return EMPTY;
+
+  let input: HookInput;
+  try {
+    input = JSON.parse(stdinJson) as HookInput;
+  } catch {
+    return EMPTY;
+  }
+  if (!input.prompt || typeof input.prompt !== "string") return EMPTY;
+  const cwd = input.cwd ?? process.cwd();
+
+  const preFilter = new PreFilter(config.preFilter.trivialWordsFile, config.preFilter.defaultWords);
+  if (config.preFilter.enabled && preFilter.isTrivial(input.prompt)) {
+    logEntry(config, baseLog(input.prompt, "pre_filter_skip"));
+    return EMPTY;
+  }
+
+  if (!existsSync(config.catalog.path)) {
+    logEntry(config, baseLog(input.prompt, "no_catalog"));
+    return EMPTY;
+  }
+
+  const apiKey = env[config.provider.apiKeyEnv];
+  if (!apiKey) {
+    logEntry(config, baseLog(input.prompt, "no_api_key"));
+    return EMPTY;
+  }
+
+  const catalogStat = statSync(config.catalog.path);
+  const cache = new LocalCache(config.cache.dir, config.cache.ttlMin, config.cache.evictionDays);
+  const cacheKey = config.cache.enabled
+    ? cache.key({
+        prompt: input.prompt,
+        catalogMtimeMs: catalogStat.mtimeMs,
+        cwd,
+        scriptVersion: config.scriptVersion,
+      })
+    : "";
+
+  let selectedJson = "";
+  let fromCache = false;
+  let usage = {
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheCreateTokens: 0,
+    cacheReadTokens: 0,
+  };
+  let latencyMs = 0;
+
+  if (config.cache.enabled) {
+    const hit = cache.get(cacheKey);
+    if (hit) {
+      selectedJson = hit;
+      fromCache = true;
+    }
+  }
+
+  if (!fromCache) {
+    const catalogContent = readFileSync(config.catalog.path, "utf8");
+    const systemPrompt = buildSystemPrompt(catalogContent);
+    const provider = new AnthropicProvider({
+      apiKey,
+      model: config.provider.model,
+      ...(config.provider.baseUrl !== undefined && {
+        baseUrl: config.provider.baseUrl,
+      }),
+      betaHeaders: config.provider.betaHeaders,
+    });
+    let resp;
+    try {
+      resp = await provider.select({
+        systemPrompt,
+        userPrompt: input.prompt,
+        maxOutputTokens: config.selection.maxOutputTokens,
+        cacheControlTtl: config.selection.cacheControlTtl,
+        timeoutMs: config.selection.curlTimeoutMs,
+      });
+    } catch {
+      logEntry(config, baseLog(input.prompt, "api_no_response"));
+      return EMPTY;
+    }
+    latencyMs = resp.latencyMs;
+    usage = resp.usage;
+    if (!resp.rawText) {
+      logEntry(config, {
+        ...baseLog(input.prompt, "api_no_content"),
+        latencyMs,
+        tokensIn: usage.inputTokens,
+        tokensOut: usage.outputTokens,
+        cacheCreate: usage.cacheCreateTokens,
+        cacheRead: usage.cacheReadTokens,
+      });
+      return EMPTY;
+    }
+    const extracted = extractJsonArray(resp.rawText);
+    if (extracted === null) {
+      logEntry(config, {
+        ...baseLog(input.prompt, "parse_invalid"),
+        latencyMs,
+        tokensIn: usage.inputTokens,
+        tokensOut: usage.outputTokens,
+        cacheCreate: usage.cacheCreateTokens,
+        cacheRead: usage.cacheReadTokens,
+      });
+      return EMPTY;
+    }
+    selectedJson = JSON.stringify(extracted);
+    if (config.cache.enabled && selectedJson !== "[]") {
+      cache.put(cacheKey, selectedJson);
+    }
+  }
+
+  const basenames: string[] = JSON.parse(selectedJson);
+  const { additional, injected, allBasenames } = readSelected(basenames, cwd, config);
+
+  let status: string;
+  if (fromCache && injected > 0) status = "cache_hit";
+  else if (injected > 0) status = "ok";
+  else if (selectedJson === "[]") status = "empty_selection";
+  else status = "all_unfound";
+
+  logEntry(config, {
+    ts: nowIso(),
+    promptPreview: input.prompt.slice(0, 80),
+    selected: allBasenames,
+    latencyMs,
+    tokensIn: usage.inputTokens,
+    tokensOut: usage.outputTokens,
+    cacheCreate: usage.cacheCreateTokens,
+    cacheRead: usage.cacheReadTokens,
+    additionalSizeChars: additional.length,
+    additionalSizeTokensEst: Math.floor(additional.length / 4),
+    status,
+  });
+
+  return {
+    hookSpecificOutput: {
+      hookEventName: "UserPromptSubmit",
+      additionalContext: additional,
+    },
+  };
+}
+
+function buildSystemPrompt(catalog: string): string {
+  return `Tu es un sélecteur de mémoire pour Claude Code. Tu identifies les feedbacks et règles pertinents pour le prompt utilisateur. Tu réponds UNIQUEMENT avec un JSON array de basenames .md, sans explication, sans markdown code fence.
+
+Voici les memory feedbacks + rules disponibles (sections par type, sous-sections par repo, [CWD] = repo courant à prioriser) :
+
+${catalog}
+
+Sélectionne 0 à 5 fichiers (basenames .md) dont le contenu sera DIRECTEMENT pertinent pour la demande utilisateur qui suit.
+
+Critères :
+- Feedback comportemental qui matche l'action (git, crypto, design, commit, etc.)
+- Rule globale qui contraint la zone touchée
+- Project memory qui décrit une décision déjà prise
+- Memory ou rule du repo CWD (marqué [CWD]) — prioriser en cas de collision basename cross-repo
+
+RÈGLES STRICTES POUR LES BASENAMES :
+1. Copie le basename EXACT tel qu'il apparaît dans le catalog (avec préfixe \`feedback_\` ou \`project_\` si présent)
+2. NE substitue PAS \`_\` par \`-\` ou inverse — les rules sont en kebab-case (\`crypto-standards.md\`), les memory en snake_case (\`feedback_X.md\`)
+3. NE tronque PAS le préfixe : \`feedback_commit_without_asking.md\` reste avec son préfixe
+4. N'invente JAMAIS un basename absent du catalog
+
+Format réponse : JSON array de basenames sur UNE SEULE LIGNE.
+Exemple correct : ["feedback_commit_without_asking.md", "crypto-standards.md"]
+Si rien n'est pertinent : []
+Pas d'explication, pas de markdown code fence.`;
+}
+
+function extractJsonArray(text: string): string[] | null {
+  const flat = text.replace(/\n/g, " ");
+  const match = flat.match(/\[[^\]]*\]/);
+  if (!match) return null;
+  try {
+    const parsed = JSON.parse(match[0]);
+    if (!Array.isArray(parsed)) return null;
+    return parsed.filter((x): x is string => typeof x === "string");
+  } catch {
+    return null;
+  }
+}
+
+interface ReadSelectedResult {
+  additional: string;
+  injected: number;
+  allBasenames: string[];
+}
+
+function readSelected(basenames: string[], cwd: string, config: MemhookConfig): ReadSelectedResult {
+  // Build search dirs: ~/.claude/projects/*/memory + global rules + cwd rules.
+  const projectDirs = listProjectsMemoryDirs(config.searchDirs[0]);
+  const rulesDir = config.searchDirs[1];
+  const cwdRulesDir = join(cwd, ".claude", "rules");
+  const dirs = [...projectDirs, rulesDir, cwdRulesDir].filter(
+    (d): d is string => typeof d === "string" && d.length > 0,
+  );
+
+  let additional = "";
+  let injected = 0;
+  const seen: string[] = [];
+
+  for (const name of basenames) {
+    if (injected >= config.selection.maxFiles) break;
+    if (!SAFE_BASENAME_RE.test(name)) continue;
+    seen.push(name);
+
+    for (const dir of dirs) {
+      const file = join(dir, name);
+      if (!existsSync(file)) continue;
+
+      // Cap-A1 projection check — pre-injection, allow ≥1 file always.
+      const content = readFileSync(file, "utf8");
+      const projected = additional.length + content.length + 64;
+      if (injected > 0 && projected > config.selection.maxAdditionalChars) {
+        return { additional, injected, allBasenames: seen };
+      }
+      additional += `\n\n<!-- ${name} (from ${basename(dir)}) -->\n${content}`;
+      injected++;
+      break;
+    }
+  }
+  return { additional, injected, allBasenames: seen };
+}
+
+function listProjectsMemoryDirs(projectsRoot: string | undefined): string[] {
+  if (!projectsRoot) return [];
+  let entries: string[] = [];
+  try {
+    entries = readdirSync(projectsRoot);
+  } catch {
+    return [];
+  }
+  const out: string[] = [];
+  for (const e of entries) {
+    const mem = join(projectsRoot, e, "memory");
+    if (existsSync(mem)) out.push(mem);
+  }
+  return out;
+}
+
+function ensureDirs(config: MemhookConfig): void {
+  mkdirSync(dirname(config.logging.jsonlPath), { recursive: true });
+  mkdirSync(config.cache.dir, { recursive: true });
+}
+
+function evictStale(config: MemhookConfig): void {
+  if (!config.cache.enabled) return;
+  try {
+    const cache = new LocalCache(config.cache.dir, config.cache.ttlMin, config.cache.evictionDays);
+    cache.evictStale();
+  } catch {
+    // silent — eviction is best-effort
+  }
+}
+
+function baseLog(prompt: string, status: string): LogEntry {
+  return {
+    ts: nowIso(),
+    promptPreview: prompt.slice(0, 80),
+    selected: [],
+    latencyMs: 0,
+    tokensIn: 0,
+    tokensOut: 0,
+    cacheCreate: 0,
+    cacheRead: 0,
+    additionalSizeChars: 0,
+    additionalSizeTokensEst: 0,
+    status,
+  };
+}
+
+function logEntry(config: MemhookConfig, entry: LogEntry): void {
+  try {
+    const line = JSON.stringify({
+      ts: entry.ts,
+      prompt_preview: entry.promptPreview,
+      selected: entry.selected,
+      latency_ms: entry.latencyMs,
+      tokens_in: entry.tokensIn,
+      tokens_out: entry.tokensOut,
+      cache_create: entry.cacheCreate,
+      cache_read: entry.cacheRead,
+      additional_size_chars: entry.additionalSizeChars,
+      additional_size_tokens_est: entry.additionalSizeTokensEst,
+      status: entry.status,
+    });
+    appendFileSync(config.logging.jsonlPath, line + "\n", "utf8");
+  } catch {
+    // silent — logging is best-effort, never block hook
+  }
+}
+
+function nowIso(): string {
+  return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+}
