@@ -1,0 +1,20 @@
+node_modules/
+dist/
+coverage/
+.vitest-cache/
+*.log
+.DS_Store
+
+# Lockfiles managed by their package manager
+package-lock.json
+bun.lock
+pnpm-lock.yaml
+yarn.lock
+
+# Private zones
+.claude/private/
+docs/private/
+
+# Generated
+.release-please-manifest.json
+CHANGELOG.md

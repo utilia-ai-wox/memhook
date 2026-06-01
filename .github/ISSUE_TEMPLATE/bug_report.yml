@@ -1,0 +1,74 @@
+name: Bug report
+description: Something is broken or behaves unexpectedly
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug report. Please fill in the
+        sections below — the more we know up-front, the faster we can help.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear and concise description of the unexpected behaviour.
+      placeholder: When I run `memhook run` with a multi-line prompt, ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+      placeholder: I expected ...
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: |
+        Minimal commands or code that reproduces the bug. The hook must never
+        block Claude Code — if it does, that is itself a bug worth reporting.
+      placeholder: |
+        1. Install memhook ...
+        2. Wire UserPromptSubmit hook ...
+        3. Submit prompt "..." ...
+        4. Observe ...
+      render: shell
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: memhook version
+      placeholder: 0.1.0-preview.0
+    validations:
+      required: true
+  - type: input
+    id: node-version
+    attributes:
+      label: Node.js version
+      placeholder: 20.11.0
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - macOS (arm64)
+        - macOS (x64)
+        - Linux (x64)
+        - Linux (arm64)
+        - Windows (x64)
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Relevant log lines
+      description: |
+        Last few lines of `~/.claude/logs/memhook.log`. Redact any prompt
+        content you don't want public.
+      render: json

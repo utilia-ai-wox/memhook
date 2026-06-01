@@ -1,0 +1,37 @@
+name: Feature request
+description: Suggest an improvement or a new capability
+labels: ["enhancement", "triage"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: |
+        Describe the underlying need, not the proposed solution. We
+        prefer to discuss the problem space first.
+      placeholder: When I work across multiple memory dirs, ...
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed approach (optional)
+      description: |
+        How you'd like to see this addressed. Skip if you don't have one yet
+        — surfacing the problem is enough.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      description: memhook is intentionally narrow — does this fit?
+      options:
+        - label: This is in scope for a semantic memory router (not a general-purpose Claude Code framework).
+          required: true
+        - label: This preserves the fail-soft contract (the hook never blocks Claude Code).
+          required: true
+        - label: This does not introduce telemetry, phone-home, or required outbound calls beyond the Anthropic API.
+          required: true

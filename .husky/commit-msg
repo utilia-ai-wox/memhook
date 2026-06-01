@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+# Commit-msg: validate Conventional Commits format via commitlint.
+
+npx --no -- commitlint --edit "$1"
