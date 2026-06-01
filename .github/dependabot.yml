@@ -17,13 +17,18 @@ updates:
       include: "scope"
     labels:
       - "dependencies"
+    # Major dev-tooling bumps (eslint, typescript, vitest…) routinely break
+    # lint/typecheck/test, so they are applied manually with the needed code
+    # changes rather than auto-opened as failing PRs.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     groups:
       npm-dev:
         dependency-type: "development"
         patterns:
           - "*"
         update-types:
-          - "major"
           - "minor"
           - "patch"
 
