@@ -18,12 +18,10 @@
   ],
   "packages": {
     ".": {
-      "prerelease": true,
-      "prerelease-type": "preview",
       "bump-minor-pre-major": true,
-      "bump-patch-for-minor-pre-major": true,
       "draft": false,
-      "draft-pull-request": false
+      "draft-pull-request": false,
+      "extra-files": ["src/version.ts"]
     }
   }
 }
