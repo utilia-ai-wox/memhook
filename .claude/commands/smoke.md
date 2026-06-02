@@ -11,8 +11,8 @@ End-to-end smoke test of the memhook hook against a synthetic prompt,
 under `src/router.ts`, `src/cache.ts`, `src/providers/`, or `bin/`.
 
 > Scope: `/smoke` exercises only `memhook run` (the hook contract). The
-> interactive commands `init` / `uninstall` / `tail` are not part of that
-> contract and are covered by their own unit tests + manual runs, not smoke.
+> interactive commands `init` / `uninstall` / `tail` / `skills` are not part of
+> that contract and are covered by their own unit tests + manual runs, not smoke.
 
 ## What it does
 

@@ -33,6 +33,7 @@ files for each prompt and injects them as `additionalContext`.
 - 🪶 **One dependency** — `yaml`, with zero sub-deps.
 - ⚡ **Cached & pre-filtered** — an LRU cache + a trivial-prompt skip keep latency near zero.
 - 🧰 **One-command setup** — `memhook init` wires the hooks (with backup); `memhook tail` shows routing live.
+- 🧩 **Companion skills** — optional `/wrap`, `/curate`, `/relay` to capture, tidy, and hand off your memory.
 
 ## 🤔 Why
 
@@ -237,6 +238,32 @@ jq -c 'select((.ts | fromdateiso8601) > (now - 7*86400)) | .status' \
 | `api_no_content`       | API returned 200 but no text                          |
 | `parse_invalid`        | Response wasn't a valid JSON array                    |
 
+## 🧩 Companion skills
+
+Routing only works well when your memory stays healthy. memhook ships three
+optional Claude Code skills for that — install them with one command:
+
+```bash
+memhook skills install      # copy them into ~/.claude/skills
+memhook skills list         # show install status
+memhook skills uninstall    # remove them (backs up any edits first)
+```
+
+`memhook init` also offers to install them.
+
+| Skill     | What it does                                                                                                                 |
+| --------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `/wrap`   | End-of-session wrap-up — captures the session's lessons into memory + a dated journal entry. Proposes; never writes unasked. |
+| `/curate` | Memory hygiene — dedupes, fixes the `MEMORY.md` index, splits oversized files, then rebuilds the catalog.                    |
+| `/relay`  | Generates a self-contained prompt to resume work in a fresh session. Read-only.                                              |
+
+They're standalone skills, so you invoke them directly as `/wrap`, `/curate`,
+`/relay`. They are user-invoked only — Claude won't trigger them on its own.
+
+When your catalog grows large, memhook also adds a one-line reminder to run
+`/curate` (a local-only `systemMessage`, 7-day cooldown — toggle with
+`MEMHOOK_CURATE_NUDGE`).
+
 ## 🛡️ Fail-soft
 
 memhook never blocks Claude Code. On any error — missing key, network
@@ -248,7 +275,7 @@ model**, just without injected memories for that turn.
 
 - `v0.2` ✅ — YAML config file, OpenAI provider, Ollama local provider (published on npm)
 - `v0.3` ✅ — `memhook init` / `memhook uninstall` setup wizard + zero-dep live monitor (`memhook tail`)
-- `v0.4` — Companion skills (`/wrap`, `/curate`, `/relay`)
+- `v0.4` ✅ — Companion skills (`/wrap`, `/curate`, `/relay`) + `memhook skills` installer + `/curate` nudge
 - `v1.0` — API frozen, cross-platform validated, listed on awesome-lists
 
 ## 🤝 Contributing

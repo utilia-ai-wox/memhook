@@ -74,8 +74,8 @@ Co-Authored-By: Name <email@example.org>
 ### Allowed scopes
 
 `router`, `catalog`, `cache`, `prefilter`, `providers`, `bin`, `config`,
-`hooks`, `init`, `tail`, `deps`, `ci`, `docs`, `tests`, `release`, `.claude`,
-`spec`.
+`hooks`, `init`, `tail`, `skills`, `deps`, `ci`, `docs`, `tests`, `release`,
+`.claude`, `spec`.
 
 Scope is optional. If used, it must come from the list above (enforced
 by `commitlint.config.js`).

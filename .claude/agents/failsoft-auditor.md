@@ -16,7 +16,9 @@ cache file, malformed prompt JSON), the hook emits an empty
 
 Read all of these:
 
-- `src/router.ts` — the hook pipeline
+- `src/router.ts` — the hook pipeline (incl. the `/curate` nudge:
+  `maybeCurateNudge` + its file-count/stamp helpers must stay fully wrapped,
+  local-only, and never alter `additionalContext` on the error path)
 - `bin/memhook.ts` — the CLI entrypoint (this is what Claude Code calls)
 - `src/cache.ts` — filesystem cache
 - `src/providers/anthropic.ts` — Anthropic HTTP call
@@ -56,13 +58,15 @@ For each violation, report `path:line` + 1-line description + suggested fix.
 ## Out of scope — interactive commands
 
 Only `memhook run` (the hook) must obey the fail-soft contract. The interactive
-commands — `memhook init`, `memhook uninstall`, `memhook tail` (`src/init.ts`,
-`src/tail.ts`, `src/ansi.ts`, `src/install.ts`, and the `init`/`uninstall`/`tail`
+commands — `memhook init`, `memhook uninstall`, `memhook tail`, `memhook skills`
+(`src/init.ts`, `src/tail.ts`, `src/ansi.ts`, `src/install.ts`, `src/skills.ts`,
+`src/skillsCmd.ts`, `src/backup.ts`, and the `init`/`uninstall`/`tail`/`skills`
 branches of `bin/memhook.ts`) — are allowed to use the TTY, write to stdout, and
 exit non-zero on user error (docs/SPECIFICATION.md §9). Do **not** flag those as
 violations. They MUST, however, never be imported by `src/router.ts` or the
-`run` path — confirm that isolation holds (they are lazy-imported only in their
-own `bin` branches).
+`run` path — confirm that isolation holds (`router.ts` imports only cache,
+config, preFilter, and the provider factory; `skillsCmd.ts` / `init.ts` and the
+shared `backup.ts` are reachable only from their own `bin` branches).
 
 ## Report format
 

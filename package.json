@@ -25,7 +25,9 @@
     "hook",
     "userpromptsubmit",
     "semantic-router",
-    "haiku"
+    "haiku",
+    "skills",
+    "slash-commands"
   ],
   "bin": {
     "memhook": "./dist/bin/memhook.js"
@@ -42,6 +44,7 @@
   },
   "files": [
     "dist",
+    "skills",
     "README.md",
     "LICENSE",
     "CHANGELOG.md"

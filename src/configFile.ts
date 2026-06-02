@@ -54,6 +54,12 @@ export interface RawConfigFile {
   logging?: {
     jsonlPath?: string;
   };
+  curateNudge?: {
+    enabled?: boolean;
+    thresholdTokens?: number;
+    thresholdFiles?: number;
+    cooldownDays?: number;
+  };
 }
 
 export function resolveConfigPath(env: NodeJS.ProcessEnv): string {

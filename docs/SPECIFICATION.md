@@ -6,10 +6,12 @@
 > Changes to this spec happen through dedicated PRs labelled `spec`,
 > never as a side-effect of feature work.
 >
-> **Status**: spec first frozen 2026-06-01, refreshed for v0.2.
-> **Implementation status**: `0.2.2` — published on npm. v0.2 shipped the
-> OpenAI + Ollama providers and the YAML config file; see
-> [§22 Roadmap](#22-roadmap) for the delivery plan.
+> **Status**: spec first frozen 2026-06-01, refreshed for v0.4.
+> **Implementation status**: `0.3.0` published on npm (init/uninstall setup +
+> `tail` live monitor). This revision documents **v0.4** — the companion skills
+> (`/wrap`, `/curate`, `/relay`) + the `memhook skills` installer + the
+> `/curate` nudge ([§26](#26-companion-skills-v04)); see
+> [§22 Roadmap](#22-roadmap).
 
 ---
 
@@ -45,16 +47,16 @@
 
 ## 1. Identity
 
-| Field           | Value                                                                                                                                |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| **Name**        | `memhook`                                                                                                                            |
-| **Tagline**     | Semantic memory router for Claude Code                                                                                               |
-| **One-liner**   | A `UserPromptSubmit` hook that asks Haiku to pick 0–5 relevant memory files per user prompt and injects them as `additionalContext`. |
-| **License**     | MIT                                                                                                                                  |
-| **Repository**  | https://github.com/utilia-ai-wox/memhook                                                                                             |
-| **npm package** | `memhook` (scope `none`)                                                                                                             |
-| **Bin command** | `memhook`                                                                                                                            |
-| **Status**      | `0.2.2` — published on npm; extracted from a private daily-use hook; API surface may still shift before `1.0.0`.                     |
+| Field           | Value                                                                                                                                                    |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Name**        | `memhook`                                                                                                                                                |
+| **Tagline**     | Semantic memory router for Claude Code                                                                                                                   |
+| **One-liner**   | A `UserPromptSubmit` hook that asks Haiku to pick 0–5 relevant memory files per user prompt and injects them as `additionalContext`.                     |
+| **License**     | MIT                                                                                                                                                      |
+| **Repository**  | https://github.com/utilia-ai-wox/memhook                                                                                                                 |
+| **npm package** | `memhook` (scope `none`)                                                                                                                                 |
+| **Bin command** | `memhook`                                                                                                                                                |
+| **Status**      | `0.3.0` published on npm; v0.4 (companion skills) in this revision; extracted from a private daily-use hook; API surface may still shift before `1.0.0`. |
 
 ### Naming rationale
 
@@ -294,6 +296,9 @@ memhook/
 │   ├── install.ts            — pure settings.json hook merge (init/uninstall core)
 │   ├── init.ts               — `memhook init` / `memhook uninstall` orchestration
 │   ├── tail.ts               — `memhook tail` live JSONL monitor
+│   ├── backup.ts             — shared backupPath/stampNow (init + skills)
+│   ├── skills.ts             — pure companion-skills plan (install/uninstall/list)
+│   ├── skillsCmd.ts          — `memhook skills` I/O shell + init integration
 │   └── providers/
 │       ├── types.ts          — Provider interface (§8.5)
 │       ├── http.ts           — shared postJsonWithRetry transport
@@ -305,7 +310,12 @@ memhook/
 ├── bin/
 │   └── memhook.ts            — CLI entrypoint
 │
-├── tests/                    — 77 tests across 11 suites
+├── skills/                   — bundled companion skills (shipped in the npm tarball)
+│   ├── wrap/SKILL.md
+│   ├── curate/{SKILL.md, reference.md}
+│   └── relay/SKILL.md
+│
+├── tests/                    — 106 tests across 13 suites
 │   ├── router.test.ts
 │   ├── cache.test.ts
 │   ├── preFilter.test.ts
@@ -316,6 +326,8 @@ memhook/
 │   ├── ansi.test.ts
 │   ├── install.test.ts
 │   ├── init.test.ts
+│   ├── skills.test.ts
+│   ├── curateNudge.test.ts
 │   └── tail.test.ts
 │
 ├── dist/                     — tsc output, gitignored, built on publish
@@ -509,16 +521,17 @@ reference.
 memhook <command> [options]
 ```
 
-| Command                 | Status | Purpose                                                                                                                                                                                   |
-| ----------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `memhook run`           | v0.1   | Read hook JSON from stdin, emit `additionalContext`.                                                                                                                                      |
-| `memhook build-catalog` | v0.1   | (Re)build `~/.claude/cache/memory-catalog.txt`.                                                                                                                                           |
-| `memhook version`       | v0.1   | Print `MEMHOOK_VERSION` (`src/version.ts`).                                                                                                                                               |
-| `memhook help`          | v0.1   | Print this command list + env var reference.                                                                                                                                              |
-| `memhook init`          | v0.3   | Interactive setup: detect Claude Code paths, write hook to `~/.claude/settings.json` (with backup), validate API key, bootstrap empty memory dirs.                                        |
-| `memhook uninstall`     | v0.3   | Remove hooks from `~/.claude/settings.json` (with backup), prompt for cache + log cleanup.                                                                                                |
-| `memhook tail`          | v0.3   | Live colourised tail of the JSONL log — time · status · prompt · latency · model + the injected memories, with a cache-rate + p50/p95 summary. Zero-dep ANSI, no TUI framework (see D20). |
-| `memhook bench`         | v0.5   | Run the 50-prompt bench suite against the configured provider; output recall + cost table.                                                                                                |
+| Command                 | Status | Purpose                                                                                                                                                                                      |
+| ----------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `memhook run`           | v0.1   | Read hook JSON from stdin, emit `additionalContext`.                                                                                                                                         |
+| `memhook build-catalog` | v0.1   | (Re)build `~/.claude/cache/memory-catalog.txt`.                                                                                                                                              |
+| `memhook version`       | v0.1   | Print `MEMHOOK_VERSION` (`src/version.ts`).                                                                                                                                                  |
+| `memhook help`          | v0.1   | Print this command list + env var reference.                                                                                                                                                 |
+| `memhook init`          | v0.3   | Interactive setup: detect Claude Code paths, write hook to `~/.claude/settings.json` (with backup), validate API key, bootstrap empty memory dirs.                                           |
+| `memhook uninstall`     | v0.3   | Remove hooks from `~/.claude/settings.json` (with backup), prompt for cache + log cleanup.                                                                                                   |
+| `memhook tail`          | v0.3   | Live colourised tail of the JSONL log — time · status · prompt · latency · model + the injected memories, with a cache-rate + p50/p95 summary. Zero-dep ANSI, no TUI framework (see D20).    |
+| `memhook skills`        | v0.4   | `install` / `uninstall` / `list` the bundled companion skills (`/wrap`, `/curate`, `/relay`) under `~/.claude/skills/`. Non-clobbering, backs up edits. See [§26](#26-companion-skills-v04). |
+| `memhook bench`         | v0.5   | Run the 50-prompt bench suite against the configured provider; output recall + cost table.                                                                                                   |
 
 `memhook run` is the only command that must obey the fail-soft
 contract. The others may exit non-zero on user error.
@@ -551,9 +564,17 @@ https://code.claude.com/docs/en/hooks):
   "hookSpecificOutput": {
     "hookEventName": "UserPromptSubmit",
     "additionalContext": "string injected before the user prompt"
-  }
+  },
+  "systemMessage": "optional one-line notice shown to the user (v0.4, additive)"
 }
 ```
+
+`systemMessage` is a documented Claude Code field ("warning message shown to
+the user"). memhook emits it **only** for the `/curate` nudge ([§26](#26-companion-skills-v04)),
+and only on the turns it fires; it is absent otherwise, so the existing
+`hookSpecificOutput.additionalContext` contract is unchanged. Adding it is
+additive (mirrors the §14 log-schema rule), not a breaking shape change — see
+[D26](#25-decision-log).
 
 ### 10.3 stdout size cap
 
@@ -704,30 +725,34 @@ are **per-provider** (e.g. Ollama timeout 30000, OpenAI model gpt-4o-mini);
 the table below shows the Anthropic-default values. Sensible defaults work
 for most users.
 
-| Variable                        | Default                                   | Type   | Purpose                                                        |
-| ------------------------------- | ----------------------------------------- | ------ | -------------------------------------------------------------- |
-| `MEMHOOK_ENABLED`               | `true`                                    | bool   | Master toggle.                                                 |
-| `MEMHOOK_PROVIDER`              | `anthropic`                               | enum   | Provider: `anthropic` / `openai` / `ollama`.                   |
-| `MEMHOOK_MODEL`                 | `claude-haiku-4-5`                        | string | Provider model id (per-provider default).                      |
-| `MEMHOOK_API_KEY_ENV`           | `ANTHROPIC_API_KEY`                       | string | Name of env var holding the API key.                           |
-| `MEMHOOK_BASE_URL`              | `https://api.anthropic.com/v1/messages`   | string | Provider endpoint (per-provider default).                      |
-| `MEMHOOK_CONFIG`                | `~/.config/memhook/config.yaml`           | path   | Optional YAML config file path.                                |
-| `MEMHOOK_MAX_FILES`             | `5`                                       | int    | Hard cap on number of files injected.                          |
-| `MEMHOOK_MAX_ADDITIONAL_CHARS`  | `9500`                                    | int    | Soft cap on injection size (Claude Code stdout cap = 10 000).  |
-| `MEMHOOK_MAX_OUTPUT_TOKENS`     | `200`                                     | int    | Provider's `max_tokens`.                                       |
-| `MEMHOOK_TIMEOUT_MS`            | `8000`                                    | int    | Provider call timeout.                                         |
-| `MEMHOOK_DISABLE_CACHE`         | `false`                                   | bool   | Skip the local LRU cache.                                      |
-| `MEMHOOK_DISABLE_PREFILTER`     | `false`                                   | bool   | Skip the trivial-prompt filter.                                |
-| `MEMHOOK_CACHE_TTL_MIN`         | `60`                                      | int    | Cache freshness in minutes.                                    |
-| `MEMHOOK_CACHE_EVICT_DAYS`      | `7`                                       | int    | Evict cache entries older than N days.                         |
-| `MEMHOOK_CACHE_DIR`             | `$HOME/.cache/memhook`                    | path   | Cache root.                                                    |
-| `MEMHOOK_CATALOG_PATH`          | `$HOME/.claude/cache/memory-catalog.txt`  | path   | Catalog file.                                                  |
-| `MEMHOOK_LOG_PATH`              | `$HOME/.claude/logs/memhook.log`          | path   | JSONL log file.                                                |
-| `MEMHOOK_TRIVIAL_FILE`          | `$HOME/.config/memhook/trivial-words.txt` | path   | User-editable trivial words.                                   |
-| `MEMHOOK_PROJECTS_ROOT`         | `$HOME/.claude/projects`                  | path   | Memory zones root (override for tests / sandbox).              |
-| `MEMHOOK_GLOBAL_RULES_DIR`      | `$HOME/.claude/rules`                     | path   | Global rules dir.                                              |
-| `MEMHOOK_DEBUG`                 | `false`                                   | bool   | Print errors to stderr (default silent fail-soft).             |
-| `NO_COLOR` / `MEMHOOK_NO_COLOR` | _(unset)_                                 | flag   | Disable colour in `init` / `tail`; `FORCE_COLOR` forces it on. |
+| Variable                             | Default                                   | Type   | Purpose                                                         |
+| ------------------------------------ | ----------------------------------------- | ------ | --------------------------------------------------------------- |
+| `MEMHOOK_ENABLED`                    | `true`                                    | bool   | Master toggle.                                                  |
+| `MEMHOOK_PROVIDER`                   | `anthropic`                               | enum   | Provider: `anthropic` / `openai` / `ollama`.                    |
+| `MEMHOOK_MODEL`                      | `claude-haiku-4-5`                        | string | Provider model id (per-provider default).                       |
+| `MEMHOOK_API_KEY_ENV`                | `ANTHROPIC_API_KEY`                       | string | Name of env var holding the API key.                            |
+| `MEMHOOK_BASE_URL`                   | `https://api.anthropic.com/v1/messages`   | string | Provider endpoint (per-provider default).                       |
+| `MEMHOOK_CONFIG`                     | `~/.config/memhook/config.yaml`           | path   | Optional YAML config file path.                                 |
+| `MEMHOOK_MAX_FILES`                  | `5`                                       | int    | Hard cap on number of files injected.                           |
+| `MEMHOOK_MAX_ADDITIONAL_CHARS`       | `9500`                                    | int    | Soft cap on injection size (Claude Code stdout cap = 10 000).   |
+| `MEMHOOK_MAX_OUTPUT_TOKENS`          | `200`                                     | int    | Provider's `max_tokens`.                                        |
+| `MEMHOOK_TIMEOUT_MS`                 | `8000`                                    | int    | Provider call timeout.                                          |
+| `MEMHOOK_DISABLE_CACHE`              | `false`                                   | bool   | Skip the local LRU cache.                                       |
+| `MEMHOOK_DISABLE_PREFILTER`          | `false`                                   | bool   | Skip the trivial-prompt filter.                                 |
+| `MEMHOOK_CACHE_TTL_MIN`              | `60`                                      | int    | Cache freshness in minutes.                                     |
+| `MEMHOOK_CACHE_EVICT_DAYS`           | `7`                                       | int    | Evict cache entries older than N days.                          |
+| `MEMHOOK_CACHE_DIR`                  | `$HOME/.cache/memhook`                    | path   | Cache root.                                                     |
+| `MEMHOOK_CATALOG_PATH`               | `$HOME/.claude/cache/memory-catalog.txt`  | path   | Catalog file.                                                   |
+| `MEMHOOK_LOG_PATH`                   | `$HOME/.claude/logs/memhook.log`          | path   | JSONL log file.                                                 |
+| `MEMHOOK_TRIVIAL_FILE`               | `$HOME/.config/memhook/trivial-words.txt` | path   | User-editable trivial words.                                    |
+| `MEMHOOK_PROJECTS_ROOT`              | `$HOME/.claude/projects`                  | path   | Memory zones root (override for tests / sandbox).               |
+| `MEMHOOK_GLOBAL_RULES_DIR`           | `$HOME/.claude/rules`                     | path   | Global rules dir.                                               |
+| `MEMHOOK_CURATE_NUDGE`               | `true`                                    | bool   | Enable the `/curate` nudge (§26). Local-only; no outbound call. |
+| `MEMHOOK_CURATE_NUDGE_TOKENS`        | `15000`                                   | int    | Catalog-token estimate that triggers the nudge.                 |
+| `MEMHOOK_CURATE_NUDGE_FILES`         | `250`                                     | int    | Memory-file count that triggers the nudge.                      |
+| `MEMHOOK_CURATE_NUDGE_COOLDOWN_DAYS` | `7`                                       | int    | Minimum days between nudges.                                    |
+| `MEMHOOK_DEBUG`                      | `false`                                   | bool   | Print errors to stderr (default silent fail-soft).              |
+| `NO_COLOR` / `MEMHOOK_NO_COLOR`      | _(unset)_                                 | flag   | Disable colour in `init` / `tail`; `FORCE_COLOR` forces it on.  |
 
 ---
 
@@ -892,23 +917,25 @@ Proper nouns (Anthropic, Haiku, OpenAI) keep their case.
 
 ## 22. Roadmap
 
-> **Shipped as of `0.2.2`:** v0.1.x, plus **v0.2.0** (OpenAI + Ollama
-> providers, YAML config). **npm publish is already live and automated**
-> (Trusted Publishing / OIDC) — it landed in v0.2, ahead of its roadmap slot.
+> **Shipped as of `0.3.0`:** v0.1.x, **v0.2.0** (OpenAI + Ollama providers, YAML
+> config), and **v0.3.0** (`memhook init` / `uninstall` + the zero-dep `tail`
+> live monitor). **v0.4.0** (this revision) adds the companion skills + the
+> `memhook skills` installer + the `/curate` nudge ([§26](#26-companion-skills-v04)).
+> **npm publish is live and automated** (Trusted Publishing / OIDC) since v0.2.
 > The `docs/PROVIDERS.md` / `docs/CONFIG.md` / `docs/BENCH.md` files the v0.2
 > row once promised were **not** created. The rows below are the original
 > plan, kept for historical intent.
 
-| Version              | Scope                                                                                                                                                                                                                            | Target             |
-| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
-| **v0.1.0-preview.0** | Initial public preview: Anthropic Haiku provider, fail-soft pipeline, cap-A1 fix, JSONL log, smoke command, failsoft-auditor agent, CI on GitHub-hosted (Linux + macOS + Windows). **NO npm publish yet** — install from source. | Shipped 2026-06-XX |
-| **v0.1.0-preview.N** | Bug fixes, observability tweaks, doc polish. No new features.                                                                                                                                                                    | continuous         |
-| **v0.1.0**           | First stable preview. Smoke harness for hook contract. Bench v2 ported to 50 prompts. `npm publish --tag preview`.                                                                                                               | 2026-06            |
-| **v0.2.0**           | OpenAI provider + Ollama provider. YAML config file. `docs/PROVIDERS.md` + `docs/CONFIG.md` + `docs/BENCH.md`. README cost table.                                                                                                | 2026-07            |
-| **v0.3.0**           | `memhook init` (Claude Code settings.json wizard with backup) + `memhook uninstall` + `memhook tail` (zero-dep ANSI live monitor, pulled forward from v0.4 — see D20). `npm publish --tag latest`.                               | 2026-08            |
-| **v0.4.0**           | _Re-planned._ `memhook tail` shipped early in v0.3 as a zero-dep ANSI reader of the frozen JSONL log (D20), not the Ink TUI once slotted here — the 18 MB / 40-dep footprint that drove the descope no longer applied.           | 2026-09            |
-| **v0.5.0**           | Companion skills: `/wrap` (end-of-session journaling), `/curate` (memory hygiene audit), `/relay` (cross-session handoff prompt). Documented as optional.                                                                        | 2026-10            |
-| **v1.0.0**           | API freeze. SemVer commitment. Cross-OS testing. Bench v3 (100+ prompts). Polished README. Listing on awesome-lists.                                                                                                             | 2026-Q4            |
+| Version              | Scope                                                                                                                                                                                                                                                                                                                                           | Target             |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
+| **v0.1.0-preview.0** | Initial public preview: Anthropic Haiku provider, fail-soft pipeline, cap-A1 fix, JSONL log, smoke command, failsoft-auditor agent, CI on GitHub-hosted (Linux + macOS + Windows). **NO npm publish yet** — install from source.                                                                                                                | Shipped 2026-06-XX |
+| **v0.1.0-preview.N** | Bug fixes, observability tweaks, doc polish. No new features.                                                                                                                                                                                                                                                                                   | continuous         |
+| **v0.1.0**           | First stable preview. Smoke harness for hook contract. Bench v2 ported to 50 prompts. `npm publish --tag preview`.                                                                                                                                                                                                                              | 2026-06            |
+| **v0.2.0**           | OpenAI provider + Ollama provider. YAML config file. `docs/PROVIDERS.md` + `docs/CONFIG.md` + `docs/BENCH.md`. README cost table.                                                                                                                                                                                                               | 2026-07            |
+| **v0.3.0**           | `memhook init` (Claude Code settings.json wizard with backup) + `memhook uninstall` + `memhook tail` (zero-dep ANSI live monitor, pulled forward from v0.4 — see D20). `npm publish --tag latest`.                                                                                                                                              | 2026-08            |
+| **v0.4.0**           | Companion skills: `/wrap` (end-of-session wrap-up), `/curate` (memory hygiene), `/relay` (cross-session handoff). Standalone skills installed by `memhook skills install` (pulled forward from v0.5 — the Ink TUI once slotted here shipped early in v0.3 as a zero-dep reader, D20). Plus the `/curate` nudge (additive `systemMessage`, D26). | 2026-09            |
+| **v0.5.0**           | `memhook bench` — run the 50-prompt suite against the configured provider, output recall + cost.                                                                                                                                                                                                                                                | 2026-10            |
+| **v1.0.0**           | API freeze. SemVer commitment. Cross-OS testing. Bench v3 (100+ prompts). Polished README. Listing on awesome-lists.                                                                                                                                                                                                                            | 2026-Q4            |
 
 Roadmap reviewed quarterly. A version slips? Document why in the
 quarterly review issue, don't quietly push out dates in this file.
@@ -946,7 +973,10 @@ quarterly review issue, don't quietly push out dates in this file.
 - **NEVER** claim support for an OS that is not in the CI matrix with a
   green test suite — supported means tested, not "probably works".
 - **NEVER** rename a logging field without a major version bump.
-- **NEVER** change the hook's stdout shape without a major version bump.
+- **NEVER** make a breaking change to the hook's stdout shape without a major
+  version bump. Adding an _optional_ field (e.g. `systemMessage`, v0.4) is
+  additive and allowed, the same way the log schema permits new fields (§14);
+  removing or renaming `hookSpecificOutput` / `additionalContext` is not.
 
 ---
 
@@ -981,7 +1011,67 @@ to this section are append-only — past decisions don't get rewritten.
 | D22 | 2026-06-02 | `init`/`uninstall` settings merge is pure + unit-tested; never clobbers                                | The dangerous step (editing `~/.claude/settings.json`) is a pure transform (`src/install.ts`): idempotent, preserves unrelated hooks/keys, backs up before writing, aborts on unparseable JSON, `--dry-run` writes nothing.                                                                                                                                                                                                                                                                                                                                              |
 | D23 | 2026-06-02 | `main` branch protection = block force-push + deletion + linear history; **no required status checks** | Required status checks on classic branch protection block release-please's PRs forever: GitHub does not run CI on PRs created by `GITHUB_TOKEN` (anti-recursion), so the release PR has zero checks and can never satisfy them. Only the maintainer can merge (external PRs have no write access) and always sees CI, so checks stay advisory; force-push + deletion blocking is the real guard and satisfies GitHub's "protect this branch" requirement. **Do NOT re-add required status checks** unless release-please is moved off `GITHUB_TOKEN` (GitHub App / PAT). |
 | D24 | 2026-06-02 | `ci.yml` triggers on `push:[main]` + `pull_request:[main]` only                                        | Dropped `push` on `feature/**` + `fix/**`. Same-repo branch PRs were double-triggering CI (push event AND pull_request event on the same head), wasting runners and emitting duplicate check runs that stalled the PR merge-gate display. PRs are validated via `pull_request`; `main` keeps a post-merge `push` run.                                                                                                                                                                                                                                                    |
+| D25 | 2026-06-02 | Companion skills ship as **standalone skills**, not slash-commands or a plugin                         | Per the Claude Code docs, custom commands are merged into skills, and skills are the superset (supporting files, invocation control, auto-load). `/curate` bundles a `reference.md`, so it needs the skill directory format. Standalone (`~/.claude/skills/<name>/`) keeps the names bare (`/wrap`); a plugin would namespace them (`/memhook:wrap`). A plugin is noted as a future distribution option in [§26](#26-companion-skills-v04).                                                                                                                              |
+| D26 | 2026-06-02 | `/curate` nudge emits an **additive** `systemMessage`; local-only                                      | When the catalog grows large the router suggests `/curate` via the documented `systemMessage` field. Additive (§10.2, §24) — absent unless it fires, never alters `additionalContext`. Local-only: reads the already-loaded catalog length, counts memory files, stamps a cooldown file — no outbound call (§6.2 preserved). Fully wrapped so it never affects fail-soft. Toggle `MEMHOOK_CURATE_NUDGE`.                                                                                                                                                                 |
+| D27 | 2026-06-02 | `memhook skills` copy plan is pure + unit-tested; non-clobbering                                       | Same discipline as D22 (`install.ts`): the plan (`src/skills.ts`) is a pure transform — idempotent (skips identical), refuses to overwrite a user-edited skill without `--force`, backs up before overwriting; `src/skillsCmd.ts` is the I/O shell. Skills are NOT on the hook path, so they may exit non-zero (§9 boundary).                                                                                                                                                                                                                                            |
 
 ---
 
-_End of specification. First frozen 2026-06-01; refreshed for v0.2 on 2026-06-02._
+## 26. Companion skills (v0.4)
+
+memhook ships three **standalone** Claude Code skills (skill format, invoked by
+their bare directory name). They are optional, user-invoked, and never on the
+hook path.
+
+| Skill     | Source                                    | Purpose                                                                         |
+| --------- | ----------------------------------------- | ------------------------------------------------------------------------------- |
+| `/wrap`   | `skills/wrap/SKILL.md`                    | End-of-session wrap-up: capture lessons into memory + a journal entry.          |
+| `/curate` | `skills/curate/SKILL.md` + `reference.md` | Memory hygiene: dedupe, index sync, split oversized files, rebuild the catalog. |
+| `/relay`  | `skills/relay/SKILL.md`                   | Generate a self-contained handoff prompt for a fresh session (read-only).       |
+
+All three carry `disable-model-invocation: true` (user-invoked only — they have
+side effects or control timing). They are generic and English: no assumption
+beyond memhook's own conventions (a `~/.claude/projects/*/memory/` directory,
+the load-bearing `description:` frontmatter, and `memhook build-catalog`).
+
+### Install
+
+`memhook skills install|uninstall|list` (and `memhook init` offers it). The
+copy plan is a pure transform in `src/skills.ts`; `src/skillsCmd.ts` is the I/O
+shell. Behaviour:
+
+- **install** — copies absent skills into `~/.claude/skills/<name>/`. Idempotent
+  (skips an identical skill). A skill that **differs** from shipped (a user edit
+  or older version) is left untouched and reported; `--force` overwrites it,
+  backing up the existing file first. `--dry-run` prints the plan only.
+- **uninstall** — removes only the files memhook ships, backing up a user-edited
+  file (outside the skill dir) first, then removes the dir once empty. User-added
+  files are left alone.
+- **list** — shows each skill's status (not installed / up to date / differs).
+
+The bundled `skills/` directory is shipped in the npm tarball (`package.json`
+`files`). `bundledSkillsDir()` resolves it from both `src/` (dev/tests) and
+`dist/src/` (published).
+
+### `/curate` nudge
+
+When the catalog passes `MEMHOOK_CURATE_NUDGE_TOKENS` (estimated catalog tokens,
+default 15 000) **or** `MEMHOOK_CURATE_NUDGE_FILES` (memory-file count, default
+250), the router attaches a one-line `systemMessage` suggesting `/curate`, then
+respects a cooldown (`MEMHOOK_CURATE_NUDGE_COOLDOWN_DAYS`, default 7) tracked by
+a stamp file in the cache dir. It is **local-only** (no outbound call, §6.2),
+**additive** (§10.2), and **fully wrapped** so it can never break fail-soft
+(§6.1). Disable with `MEMHOOK_CURATE_NUDGE=false`. See `maybeCurateNudge` in
+`src/router.ts`.
+
+### Future option: distribute as a plugin
+
+Claude Code plugins are the canonical way to share a bundle of skills + a hook,
+with versioned marketplace installs — but plugin skills are namespaced
+(`/memhook:wrap`). Shipping memhook as a plugin (skills + a `hooks/hooks.json`
+wiring `memhook run`) is a possible future track; it would trade the bare names
+for marketplace distribution. Out of scope for v0.4 (D25).
+
+---
+
+_End of specification. First frozen 2026-06-01; refreshed for v0.2 on 2026-06-02; companion skills (v0.4) on 2026-06-02._

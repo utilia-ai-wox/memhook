@@ -61,6 +61,17 @@ export interface MemhookConfig {
   logging: {
     jsonlPath: string;
   };
+  /**
+   * Optional proactive nudge: when the memory catalog grows past a threshold,
+   * the router attaches a one-line `systemMessage` suggesting `/curate`. This
+   * is local-only (no outbound call) and best-effort (never affects fail-soft).
+   */
+  curateNudge: {
+    enabled: boolean;
+    thresholdTokens: number;
+    thresholdFiles: number;
+    cooldownDays: number;
+  };
   scriptVersion: string;
 }
 
@@ -251,6 +262,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): MemhookConfig 
         yaml?.logging?.jsonlPath,
         join(home, ".claude", "logs", "memhook.log"),
       ),
+    },
+    curateNudge: {
+      enabled: bool("MEMHOOK_CURATE_NUDGE", yaml?.curateNudge?.enabled, true),
+      thresholdTokens: num(
+        "MEMHOOK_CURATE_NUDGE_TOKENS",
+        yaml?.curateNudge?.thresholdTokens,
+        15000,
+      ),
+      thresholdFiles: num("MEMHOOK_CURATE_NUDGE_FILES", yaml?.curateNudge?.thresholdFiles, 250),
+      cooldownDays: num("MEMHOOK_CURATE_NUDGE_COOLDOWN_DAYS", yaml?.curateNudge?.cooldownDays, 7),
     },
     scriptVersion: MEMHOOK_VERSION,
   };

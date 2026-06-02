@@ -49,6 +49,7 @@ export default {
         "hooks",
         "init",
         "tail",
+        "skills",
         "deps",
         "ci",
         "docs",
