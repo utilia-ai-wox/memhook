@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { join, basename } from "node:path";
 import { buildCatalog } from "../src/catalog.js";
 
+const isWindows = process.platform === "win32";
+
 // Mirror of catalog.ts cwdToSlug — `~/.claude/projects` encodes `/a/b/c` as `-a-b-c`.
 function slugify(cwd: string): string {
   return cwd.replace(/\\/g, "/").replace(/^\//, "-").replace(/\//g, "-");
@@ -23,30 +25,26 @@ describe("buildCatalog", () => {
     cwd = join(root, "work", "my-project");
     outputPath = join(root, "catalog.txt");
 
-    // CWD project zone — its dir name must equal cwdToSlug(cwd) to be marked [CWD].
-    const cwdZone = join(projectsRoot, slugify(cwd), "memory");
-    mkdirSync(cwdZone, { recursive: true });
-    writeFileSync(
-      join(cwdZone, "feedback_cwd.md"),
-      "---\ndescription: CWD feedback desc\n---\nbody\n",
-    );
-    writeFileSync(join(cwdZone, "project_cwd.md"), "# CWD project H1 title\nbody\n");
-    writeFileSync(join(cwdZone, "MEMORY.md"), "index\n");
-
-    // A second, non-CWD project zone.
+    // A non-CWD project zone (legal dir name on every OS).
     const other = join(projectsRoot, "other-project", "memory");
     mkdirSync(other, { recursive: true });
     writeFileSync(join(other, "feedback_other.md"), "---\ndescription: other\n---\n");
     writeFileSync(join(other, "project_other.md"), "# other project\n");
 
-    // Global rules.
+    // Global rules — description extraction (frontmatter + H1 fallback) is
+    // exercised here, which works on every OS.
     mkdirSync(globalRulesDir, { recursive: true });
-    writeFileSync(join(globalRulesDir, "rule-global.md"), "---\ndescription: a global rule\n---\n");
+    writeFileSync(join(globalRulesDir, "rule-fm.md"), "---\ndescription: a global rule\n---\n");
+    writeFileSync(join(globalRulesDir, "rule-h1.md"), "# H1 fallback title\nbody\n");
 
-    // CWD project rules.
-    const projRules = join(cwd, ".claude", "rules");
-    mkdirSync(projRules, { recursive: true });
-    writeFileSync(join(projRules, "rule-proj.md"), "# Project rule title\n");
+    // CWD zone: its directory name is cwdToSlug(cwd), which embeds the drive
+    // colon on Windows (an illegal filename char), so create it only off-Windows.
+    if (!isWindows) {
+      const cwdZone = join(projectsRoot, slugify(cwd), "memory");
+      mkdirSync(cwdZone, { recursive: true });
+      writeFileSync(join(cwdZone, "feedback_cwd.md"), "---\ndescription: CWD feedback desc\n---\n");
+      writeFileSync(join(cwdZone, "MEMORY.md"), "index\n");
+    }
   });
 
   afterEach(() => rmSync(root, { recursive: true, force: true }));
@@ -66,30 +64,37 @@ describe("buildCatalog", () => {
     expect(out).toContain(`=== PROJECT RULES (${basename(cwd)}) ===`);
   });
 
-  it("marks the CWD zone [CWD], lists it first, and shows descriptions for CWD entries only", () => {
+  it("lists non-CWD zones as bare basenames (title-only, no description)", () => {
     const out = build();
-    expect(out).toContain(`--- ${slugify(cwd)} [CWD] ---`);
-    expect(out).toContain("feedback_cwd.md: CWD feedback desc");
-    // Non-CWD entries are bare basenames (title-only, ~50% size reduction).
     expect(out).toContain("feedback_other.md");
     expect(out).not.toContain("feedback_other.md: other");
-    // CWD-first ordering.
-    expect(out.indexOf(slugify(cwd))).toBeLessThan(out.indexOf("other-project"));
   });
 
-  it("derives a description from frontmatter, falling back to the first H1", () => {
+  it("derives a rule description from frontmatter, falling back to the first H1", () => {
     const out = build();
-    expect(out).toContain("project_cwd.md: CWD project H1 title"); // H1 fallback (no frontmatter)
-    expect(out).toContain("rule-global.md: a global rule"); // global rules carry descriptions
-  });
-
-  it("does not list MEMORY.md as a memory entry", () => {
-    expect(build()).not.toContain("MEMORY.md");
+    expect(out).toContain("rule-fm.md: a global rule"); // frontmatter description
+    expect(out).toContain("rule-h1.md: H1 fallback title"); // H1 fallback (no frontmatter)
   });
 
   it("emits a '(directory not found)' line for a missing rules dir instead of throwing", () => {
     const missing = join(root, "does-not-exist");
     const out = build(missing);
     expect(out).toContain(`(directory not found: ${missing})`);
+  });
+
+  // The CWD zone's directory name is the path slug (with a Windows drive colon),
+  // so these assertions run off-Windows where that name is a legal filename.
+  it.skipIf(isWindows)(
+    "marks the CWD zone [CWD], lists it first, and shows its description",
+    () => {
+      const out = build();
+      expect(out).toContain(`--- ${slugify(cwd)} [CWD] ---`);
+      expect(out).toContain("feedback_cwd.md: CWD feedback desc");
+      expect(out.indexOf(slugify(cwd))).toBeLessThan(out.indexOf("other-project"));
+    },
+  );
+
+  it.skipIf(isWindows)("does not list MEMORY.md as a memory entry", () => {
+    expect(build()).not.toContain("MEMORY.md");
   });
 });
