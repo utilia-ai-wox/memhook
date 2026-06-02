@@ -141,8 +141,25 @@ in **manifest mode**, configured in `release-please-config.json`.
    drifts from the published one.
 3. Merging the release PR creates a tag `vX.Y.Z` and a GitHub Release with the
    changelog notes.
-4. `npm publish` is **not** automated yet. Until then, maintainers publish
-   manually with `npm publish`.
+4. That same release run then **publishes to npm automatically** — the
+   `publish-npm` job in `release-please.yml` runs only when a release was cut
+   (`release_created`), and publishes with `npm publish --provenance`.
+
+### npm publishing (automated, OIDC)
+
+Publishing uses npm **Trusted Publishing** via GitHub OIDC — there is **no
+`NPM_TOKEN` secret**; npm verifies the workflow's identity directly, and
+`--provenance` attaches a signed [provenance attestation](https://docs.npmjs.com/generating-provenance-statements).
+
+One-time setup (maintainer, on npmjs.com), required before the first automated
+release:
+
+1. Publish `memhook` once to claim the name, or create the package, then
+2. In the package's npm settings, add a **Trusted Publisher** → GitHub Actions,
+   pointing at `utilia-ai-wox/memhook` and the `release-please.yml` workflow.
+
+After that, every merged release PR publishes the new version with no manual
+step. `prepublishOnly` (typecheck + lint + test + build) gates every publish.
 
 ### Versioning policy (SemVer)
 
