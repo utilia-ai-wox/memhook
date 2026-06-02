@@ -5,6 +5,23 @@ All notable changes to memhook are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0](https://github.com/utilia-ai-wox/memhook/compare/v0.2.2...v0.3.0) (2026-06-02)
+
+
+### Features
+
+* add init/uninstall setup + tail live monitor ([#29](https://github.com/utilia-ai-wox/memhook/issues/29)) ([e895c9a](https://github.com/utilia-ai-wox/memhook/commit/e895c9a44fb46a141a20f1716999be3a0208bb89))
+
+
+### Bug Fixes
+
+* harden hook path against file-system races and stdin errors ([#30](https://github.com/utilia-ai-wox/memhook/issues/30)) ([8a0f10e](https://github.com/utilia-ai-wox/memhook/commit/8a0f10e1d7a7184b7cc5fdcb4eb20ae4be516b0d))
+
+
+### Documentation
+
+* refresh all docs for v0.2.2 and revamp the README ([#27](https://github.com/utilia-ai-wox/memhook/issues/27)) ([ad1106a](https://github.com/utilia-ai-wox/memhook/commit/ad1106a3a0cea47ce75201a781fdf5eda80324b2))
+
 ## [0.2.2](https://github.com/utilia-ai-wox/memhook/compare/v0.2.1...v0.2.2) (2026-06-02)
 
 
