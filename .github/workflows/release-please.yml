@@ -45,6 +45,8 @@ jobs:
       # Trusted Publishing (OIDC, no token) requires npm >= 11.5.1; the npm
       # bundled with Node 22 is older, so upgrade before publishing.
       - run: npm install -g npm@latest
-      - run: npm ci
+      # `npm install` (not `npm ci`): this repo intentionally ships no committed
+      # lockfile (see commit 9fb393f), matching the ci.yml install step.
+      - run: npm install --no-audit --no-fund
       # `prepublishOnly` re-runs typecheck + lint + test + build before publish.
       - run: npm publish --provenance --access public
