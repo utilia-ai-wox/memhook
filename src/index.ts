@@ -8,7 +8,9 @@
 
 export { loadConfig, type MemhookConfig, type ProviderType } from "./config.js";
 export { loadYamlConfig, resolveConfigPath, type RawConfigFile } from "./configFile.js";
-export { route, type HookInput, type HookOutput } from "./router.js";
+export { route, runHarness, type HookInput, type HookOutput } from "./router.js";
+export { claudeCodeAdapter } from "./adapters/claudeCode.js";
+export type { HarnessAdapter, HarnessInput, RouteResult } from "./adapters/types.js";
 export { buildCatalog, type CatalogBuildOptions } from "./catalog.js";
 export { LocalCache, type CacheKeyInput } from "./cache.js";
 export { PreFilter } from "./preFilter.js";
