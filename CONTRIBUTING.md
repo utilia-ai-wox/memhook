@@ -109,10 +109,11 @@ by `commitlint.config.js`).
   hang, exit non-zero, or pollute stdout. Every error path falls back
   to an empty `additionalContext`. The `failsoft-auditor` agent
   (`.claude/agents/failsoft-auditor.md`) checks for violations.
-- **No telemetry**: the only outbound network call permitted is
-  `api.anthropic.com`, using the user's own API key. Any future feature
-  that introduces a different outbound call must be opt-in by config
-  and documented in the README.
+- **No telemetry**: the only outbound calls are to the user's configured LLM
+  provider — `api.anthropic.com` by default, or `api.openai.com` / a local
+  Ollama (`localhost:11434`) when explicitly selected — using the user's own
+  key. No analytics, no phone-home. Any new outbound call must be opt-in by
+  config and documented in the README.
 - **Lint + format on save** via `lint-staged` (configured in `package.json`,
   triggered by the Husky `pre-commit` hook on every commit).
 
