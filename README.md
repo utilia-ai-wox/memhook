@@ -247,7 +247,7 @@ model**, just without injected memories for that turn.
 ## 🗺️ Roadmap
 
 - `v0.2` ✅ — YAML config file, OpenAI provider, Ollama local provider (published on npm)
-- `v0.3` — `memhook init` / `memhook uninstall` setup wizard + zero-dep live monitor (`memhook tail`)
+- `v0.3` ✅ — `memhook init` / `memhook uninstall` setup wizard + zero-dep live monitor (`memhook tail`)
 - `v0.4` — Companion skills (`/wrap`, `/curate`, `/relay`)
 - `v1.0` — API frozen, cross-platform validated, listed on awesome-lists
 
