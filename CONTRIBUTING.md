@@ -134,16 +134,32 @@ memhook uses [release-please](https://github.com/googleapis/release-please)
 in **manifest mode**, configured in `release-please-config.json`.
 
 1. When commits matching `feat()` or `fix()` land on `main`, a bot opens a
-   release PR titled `chore(main): release X.Y.Z-preview.N`.
+   release PR titled `chore(main): release X.Y.Z`.
 2. The release PR updates `package.json` version, regenerates `CHANGELOG.md`,
-   and bumps `.release-please-manifest.json`.
-3. Merging the release PR creates a tag `vX.Y.Z-preview.N` and a GitHub
-   Release with the changelog notes.
-4. `npm publish` is **not** automated yet (deferred to v0.2). Until then,
-   maintainers publish manually with `npm publish --tag preview`.
+   bumps `.release-please-manifest.json`, and (via `extra-files`) rewrites the
+   `MEMHOOK_VERSION` constant in `src/version.ts` so the runtime version never
+   drifts from the published one.
+3. Merging the release PR creates a tag `vX.Y.Z` and a GitHub Release with the
+   changelog notes.
+4. `npm publish` is **not** automated yet. Until then, maintainers publish
+   manually with `npm publish`.
 
-Pre-release tags follow `0.X.Y-preview.N` while memhook is in `0.x`.
-After `1.0.0`, pre-release tags drop.
+### Versioning policy (SemVer)
+
+memhook follows [SemVer 2.0.0](https://semver.org). While in `0.x` the public
+API is not yet stable ([SemVer §4](https://semver.org/#spec-item-4)), so the
+bump mapping (driven by [Conventional Commits](https://www.conventionalcommits.org)
+via `bump-minor-pre-major`) is:
+
+| Commit                        | Bump in `0.x` | Example         |
+| ----------------------------- | ------------- | --------------- |
+| `fix:` / `perf:`              | patch         | `0.2.0 → 0.2.1` |
+| `feat:`                       | **minor**     | `0.1.0 → 0.2.0` |
+| `feat!:` / `BREAKING CHANGE:` | minor         | `0.2.0 → 0.3.0` |
+
+There are **no pre-release suffixes** — `0.x` already signals an unstable API,
+so a feature is simply the next minor (`0.2.0`, `0.3.0`, …). We cut `1.0.0`
+manually when we commit to API stability, after which `feat!:` bumps major.
 
 ## What we will not merge
 
