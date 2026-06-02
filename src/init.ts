@@ -14,7 +14,7 @@
  * All file I/O lives here; `install.ts` stays pure.
  */
 
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline/promises";
@@ -98,10 +98,19 @@ function makeIo(env: NodeJS.ProcessEnv): Io {
   return { out: (s) => process.stdout.write(s + "\n"), ansi };
 }
 
-/** Read + JSON-parse settings; returns `{}` for a missing file, throws for invalid JSON. */
+/**
+ * Read + JSON-parse settings; returns `{}` for a missing/empty file, throws for
+ * invalid JSON. Reads-then-handles-ENOENT rather than checking existence first,
+ * which avoids a check-then-use race (CodeQL js/file-system-race).
+ */
 function readSettings(path: string): Settings {
-  if (!existsSync(path)) return {};
-  const text = readFileSync(path, "utf8");
+  let text: string;
+  try {
+    text = readFileSync(path, "utf8");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return {};
+    throw err;
+  }
   if (text.trim() === "") return {};
   return JSON.parse(text) as Settings;
 }
@@ -109,6 +118,21 @@ function readSettings(path: string): Settings {
 function writeJson(path: string, value: unknown): void {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, JSON.stringify(value, null, 2) + "\n", "utf8");
+}
+
+/**
+ * Copy `path` to its timestamped backup; returns false when there was nothing
+ * to back up (file absent). Copy-then-handle-ENOENT — not an `existsSync`
+ * pre-check — avoids a check-then-use race and is robust if the file vanishes.
+ */
+function backupFile(path: string, stamp: string): boolean {
+  try {
+    copyFileSync(path, backupPath(path, stamp));
+    return true;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw err;
+  }
 }
 
 // ── memhook init ──────────────────────────────────────────────────────────
@@ -215,13 +239,13 @@ export async function runInit(
   // 5. Write (settings first, with backup).
   const stamp = stampNow();
   if (merge.added.length > 0) {
-    if (existsSync(settingsPath)) copyFileSync(settingsPath, backupPath(settingsPath, stamp));
+    backupFile(settingsPath, stamp);
     writeJson(settingsPath, merge.settings);
     io.out(`${ansi.green("✓")} wired ${merge.added.join(" + ")} into ${settingsPath}`);
   }
   if (configObj) {
     const cfgPath = configYamlPath();
-    if (existsSync(cfgPath)) copyFileSync(cfgPath, backupPath(cfgPath, stamp));
+    backupFile(cfgPath, stamp);
     mkdirSync(dirname(cfgPath), { recursive: true });
     writeFileSync(cfgPath, yamlStringify(configObj), "utf8");
     io.out(`${ansi.green("✓")} wrote ${cfgPath}`);
@@ -306,7 +330,7 @@ export async function runUninstall(
   }
 
   const stamp = stampNow();
-  if (existsSync(settingsPath)) copyFileSync(settingsPath, backupPath(settingsPath, stamp));
+  backupFile(settingsPath, stamp);
   writeJson(settingsPath, result.settings);
   io.out(`${ansi.green("✓")} removed ${result.removed} hook(s) from ${settingsPath}`);
 
