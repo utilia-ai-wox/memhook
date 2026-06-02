@@ -4,16 +4,47 @@ on:
   push:
     branches: [main]
 
-permissions:
-  contents: write
-  pull-requests: write
+# Least privilege: permissions are granted per-job. The release job writes
+# contents + PRs; the publish job needs only OIDC (id-token) + read.
+permissions: {}
 
 jobs:
   release-please:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
     steps:
       - uses: googleapis/release-please-action@v5
+        id: release
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
           token: ${{ secrets.GITHUB_TOKEN }}
+
+  # Publishes to npm only when a release was actually cut (the release PR was
+  # merged). Auth is npm Trusted Publishing via OIDC — no NPM_TOKEN secret — and
+  # --provenance attaches a signed supply-chain attestation. The npm package
+  # must have a Trusted Publisher configured (one-time, on npmjs.com) pointing
+  # at this repo + workflow; see CONTRIBUTING.md.
+  publish-npm:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: "https://registry.npmjs.org"
+      # Trusted Publishing (OIDC, no token) requires npm >= 11.5.1; the npm
+      # bundled with Node 22 is older, so upgrade before publishing.
+      - run: npm install -g npm@latest
+      - run: npm ci
+      # `prepublishOnly` re-runs typecheck + lint + test + build before publish.
+      - run: npm publish --provenance --access public
