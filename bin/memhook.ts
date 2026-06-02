@@ -64,18 +64,19 @@ async function main(): Promise<void> {
 }
 
 async function cmdRun(): Promise<void> {
-  const stdin = await readStdin();
-  let output;
+  // Fail-soft: read stdin AND route inside one try, so ANY error — a stdin
+  // read error (stdin 'error' event) just as much as a routing error — falls
+  // back to empty additionalContext and exit 0, never a non-zero exit that
+  // would block the user prompt.
+  let output = {
+    hookSpecificOutput: {
+      hookEventName: "UserPromptSubmit" as const,
+      additionalContext: "",
+    },
+  };
   try {
-    output = await route(stdin);
+    output = await route(await readStdin());
   } catch (err) {
-    // Fail-soft: emit empty additionalContext, never block the user prompt
-    output = {
-      hookSpecificOutput: {
-        hookEventName: "UserPromptSubmit" as const,
-        additionalContext: "",
-      },
-    };
     if (process.env["MEMHOOK_DEBUG"] === "true") {
       process.stderr.write(`memhook run error: ${String(err)}\n`);
     }

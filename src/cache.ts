@@ -11,7 +11,17 @@
  */
 
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  fstatSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  readdirSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 
 export interface CacheKeyInput {
@@ -39,18 +49,24 @@ export class LocalCache {
 
   get(key: string): string | null {
     const file = join(this.dir, `${key}.json`);
-    let stat: ReturnType<typeof statSync>;
+    // Open once, then `fstat` (for the TTL check) and read from the SAME fd.
+    // A single handle — rather than statSync-then-readFileSync on the path —
+    // closes a check-then-use window (CodeQL js/file-system-race). Any failure
+    // (missing, unreadable, vanished mid-read) is treated as a cache miss.
+    let fd: number;
     try {
-      stat = statSync(file);
+      fd = openSync(file, "r");
     } catch {
       return null;
     }
-    const ageMs = Date.now() - stat.mtimeMs;
-    if (ageMs > this.ttlMin * 60_000) return null;
     try {
-      return readFileSync(file, "utf8");
+      const ageMs = Date.now() - fstatSync(fd).mtimeMs;
+      if (ageMs > this.ttlMin * 60_000) return null;
+      return readFileSync(fd, "utf8");
     } catch {
       return null;
+    } finally {
+      closeSync(fd);
     }
   }
 

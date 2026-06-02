@@ -22,7 +22,9 @@
 import {
   existsSync,
   readFileSync,
-  statSync,
+  openSync,
+  fstatSync,
+  closeSync,
   appendFileSync,
   mkdirSync,
   readdirSync,
@@ -93,7 +95,24 @@ export async function route(
     return EMPTY;
   }
 
-  if (!existsSync(config.catalog.path)) {
+  // Read the catalog through a single fd: `fstat` gives the cache-key mtime and
+  // we read the content from the same handle. Using one open fd — instead of
+  // `existsSync`/`statSync` then `readFileSync` on the path — closes a
+  // check-then-use window (CodeQL js/file-system-race). A missing or unreadable
+  // catalog falls through to `no_catalog` (fail-soft). The content is only used
+  // on a cache miss, but reading it here (a small index file) keeps the catalog
+  // access to one race-free handle.
+  let catalogContent: string;
+  let catalogMtimeMs: number;
+  try {
+    const fd = openSync(config.catalog.path, "r");
+    try {
+      catalogMtimeMs = fstatSync(fd).mtimeMs;
+      catalogContent = readFileSync(fd, "utf8");
+    } finally {
+      closeSync(fd);
+    }
+  } catch {
     logEntry(config, baseLog(input.prompt, "no_catalog"));
     return EMPTY;
   }
@@ -106,12 +125,11 @@ export async function route(
     return EMPTY;
   }
 
-  const catalogStat = statSync(config.catalog.path);
   const cache = new LocalCache(config.cache.dir, config.cache.ttlMin, config.cache.evictionDays);
   const cacheKey = config.cache.enabled
     ? cache.key({
         prompt: input.prompt,
-        catalogMtimeMs: catalogStat.mtimeMs,
+        catalogMtimeMs,
         cwd,
         scriptVersion: config.scriptVersion,
         provider: `${config.provider.type}:${config.provider.model}`,
@@ -139,7 +157,6 @@ export async function route(
   }
 
   if (!fromCache) {
-    const catalogContent = readFileSync(config.catalog.path, "utf8");
     const systemPrompt = buildSystemPrompt(catalogContent);
     // Provider construction can throw on bad config; the constructor `throw`s
     // are reachable from the hook, so they MUST be caught here (fail-soft).
@@ -304,10 +321,17 @@ function readSelected(basenames: string[], cwd: string, config: MemhookConfig): 
 
     for (const dir of dirs) {
       const file = join(dir, name);
-      if (!existsSync(file)) continue;
+
+      // Read directly and treat a read failure as "not in this dir" — no
+      // existsSync precheck, so no check-then-use race (CodeQL js/file-system-race).
+      let content: string;
+      try {
+        content = readFileSync(file, "utf8");
+      } catch {
+        continue;
+      }
 
       // Cap-A1 projection check — pre-injection, allow ≥1 file always.
-      const content = readFileSync(file, "utf8");
       const projected = additional.length + content.length + 64;
       if (injected > 0 && projected > config.selection.maxAdditionalChars) {
         return { additional, injected, allBasenames: seen };
