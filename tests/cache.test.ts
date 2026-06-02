@@ -19,12 +19,14 @@ describe("LocalCache", () => {
       catalogMtimeMs: 1,
       cwd: "/y",
       scriptVersion: "v1",
+      provider: "anthropic:m",
     });
     const b = cache.key({
       prompt: "x",
       catalogMtimeMs: 1,
       cwd: "/y",
       scriptVersion: "v1",
+      provider: "anthropic:m",
     });
     expect(a).toEqual(b);
     expect(a).toMatch(/^[0-9a-f]{64}$/);
@@ -36,12 +38,14 @@ describe("LocalCache", () => {
       catalogMtimeMs: 1,
       cwd: "/y",
       scriptVersion: "v1",
+      provider: "anthropic:m",
     };
     const k0 = cache.key(base);
     expect(cache.key({ ...base, prompt: "y" })).not.toEqual(k0);
     expect(cache.key({ ...base, cwd: "/z" })).not.toEqual(k0);
     expect(cache.key({ ...base, scriptVersion: "v2" })).not.toEqual(k0);
     expect(cache.key({ ...base, catalogMtimeMs: 2 })).not.toEqual(k0);
+    expect(cache.key({ ...base, provider: "openai:m" })).not.toEqual(k0);
   });
 
   it("roundtrips put/get", () => {
@@ -50,6 +54,7 @@ describe("LocalCache", () => {
       catalogMtimeMs: 0,
       cwd: "/",
       scriptVersion: "v",
+      provider: "anthropic:m",
     });
     cache.put(k, '["a.md"]');
     expect(cache.get(k)).toEqual('["a.md"]');
@@ -62,6 +67,7 @@ describe("LocalCache", () => {
       catalogMtimeMs: 0,
       cwd: "/",
       scriptVersion: "v",
+      provider: "anthropic:m",
     });
     const file = join(dir, `${k}.json`);
     writeFileSync(file, "[]");
@@ -78,6 +84,7 @@ describe("LocalCache", () => {
       catalogMtimeMs: 0,
       cwd: "/",
       scriptVersion: "v",
+      provider: "anthropic:m",
     });
     const file = join(dir, `${k}.json`);
     writeFileSync(file, "[]");

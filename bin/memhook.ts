@@ -16,8 +16,7 @@
 import { route } from "../src/router.js";
 import { buildCatalog } from "../src/catalog.js";
 import { loadConfig } from "../src/config.js";
-
-const VERSION = "0.1.0-preview.0";
+import { MEMHOOK_VERSION as VERSION } from "../src/version.js";
 
 async function main(): Promise<void> {
   const cmd = process.argv[2] ?? "help";
@@ -100,13 +99,27 @@ COMMANDS
 
 ENV VARS
   MEMHOOK_ENABLED                 toggle (default: true)
-  MEMHOOK_MODEL                   provider model id (default: claude-haiku-4-5)
-  MEMHOOK_API_KEY_ENV             env var name holding the API key (default: ANTHROPIC_API_KEY)
+  MEMHOOK_PROVIDER                anthropic | openai | ollama (default: anthropic)
+  MEMHOOK_MODEL                   model id (per-provider default if unset)
+  MEMHOOK_API_KEY_ENV             env var name holding the API key
+                                  (anthropic: ANTHROPIC_API_KEY, openai: OPENAI_API_KEY,
+                                   ollama: none required)
+  MEMHOOK_BASE_URL                override the provider API endpoint
+  MEMHOOK_CONFIG                  path to a YAML config file
+                                  (default: ~/.config/memhook/config.yaml)
   MEMHOOK_MAX_FILES               file-count cap (default: 5)
   MEMHOOK_MAX_ADDITIONAL_CHARS    injection size cap (default: 9500)
+  MEMHOOK_MAX_OUTPUT_TOKENS       model output cap (default: 200)
+  MEMHOOK_TIMEOUT_MS              request timeout (default: 8000; ollama: 30000)
   MEMHOOK_DISABLE_CACHE=true      skip local LRU cache
   MEMHOOK_DISABLE_PREFILTER=true  skip trivial-prompt skip
   MEMHOOK_DEBUG=true              print errors to stderr (default: silent fail-soft)
+
+PROVIDERS
+  Default is Anthropic (only api.anthropic.com is contacted). Selecting
+  openai or ollama is opt-in and changes the outbound endpoint to
+  api.openai.com or your local Ollama (http://localhost:11434) respectively.
+  Per-key precedence is env var > YAML config > built-in default.
 `);
 }
 

@@ -19,9 +19,14 @@ Read all of these:
 - `src/router.ts` — the hook pipeline
 - `bin/memhook.ts` — the CLI entrypoint (this is what Claude Code calls)
 - `src/cache.ts` — filesystem cache
-- `src/providers/anthropic.ts` — provider HTTP call
+- `src/providers/anthropic.ts` — Anthropic HTTP call
+- `src/providers/openai.ts` — OpenAI HTTP call
+- `src/providers/ollama.ts` — Ollama (local) HTTP call
+- `src/providers/http.ts` — shared fetch transport (timeout + retry)
+- `src/providers/factory.ts` — provider selection (constructor throws)
 - `src/preFilter.ts` — trivial-prompt filter
-- `src/config.ts` — env var loader
+- `src/config.ts` — env + YAML config loader (must stay total)
+- `src/configFile.ts` — YAML file I/O (must never throw)
 
 ## Violations to flag
 

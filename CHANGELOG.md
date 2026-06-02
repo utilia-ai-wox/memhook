@@ -9,7 +9,42 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Added
 
+- **OpenAI provider** (`MEMHOOK_PROVIDER=openai`) — Chat Completions API,
+  `Authorization: Bearer`, catalog as the leading system message so OpenAI's
+  automatic prompt caching can engage. Default model `gpt-4o-mini`.
+- **Ollama local provider** (`MEMHOOK_PROVIDER=ollama`) — native `/api/chat`
+  endpoint, no API key, `stream:false` + `format:"json"`. Default model
+  `llama3.1`, with a 30s default timeout to absorb cold model loads.
+- **YAML config file** (`config.yaml`) — optional, opt-in, read from
+  `$MEMHOOK_CONFIG` or `~/.config/memhook/config.yaml`. Precedence is
+  env var > YAML > default. A missing or malformed file is ignored
+  (fail-soft to defaults). See `config.example.yaml`.
+- `src/providers/factory.ts` — `createProvider()` selects the adapter from
+  `config.provider.type` with compile-time exhaustiveness.
+- `src/providers/http.ts` — single shared `postJsonWithRetry` transport
+  (timeout + single retry) used by all providers.
+- `MEMHOOK_PROVIDER` and `MEMHOOK_CONFIG` env vars; per-provider defaults for
+  model / API-key env var / timeout.
 - Hardening pre-publish (CI, CHANGELOG, CONTRIBUTING, `.env.example`)
+
+### Changed
+
+- The provider interface is now provider-agnostic: Anthropic-specific
+  `betaHeaders` and `cacheControlTtl` moved off the shared `SelectionRequest`
+  into `AnthropicProviderOptions`. `ProviderConfig.apiKey` is now optional
+  (local providers need none).
+- Cache key now includes the provider identity (`type:model`) so switching
+  provider or model never serves a selection made by a different model.
+- The two hardcoded version strings (`config.ts`, `bin/memhook.ts`) are
+  centralised in `src/version.ts`.
+
+### Note
+
+- Adding `openai` / `ollama` introduces opt-in outbound calls to
+  `api.openai.com` / `localhost:11434`. The default remains Anthropic-only;
+  `api.anthropic.com` is still the sole endpoint for an unconfigured user. No
+  telemetry, no phone-home.
+- First runtime dependency: `yaml` (zero sub-dependencies).
 
 ## [0.1.0-preview.0] — 2026-05-28
 

@@ -1,0 +1,60 @@
+# memhook config (optional) — copy to ~/.config/memhook/config.yaml
+# or point $MEMHOOK_CONFIG at it. Everything here is optional and has a
+# built-in default. Precedence per key is: env var > this file > default.
+#
+# memhook works with NO config file at all (env vars only), exactly as in
+# v0.1. This file only exists if you prefer YAML over env vars or want to
+# switch providers.
+
+# enabled: true
+
+provider:
+  # anthropic (default) | openai | ollama
+  type: anthropic
+
+  # Model id. Defaults per provider:
+  #   anthropic -> claude-haiku-4-5
+  #   openai    -> gpt-4o-mini
+  #   ollama    -> llama3.1   (must be pulled: `ollama pull llama3.1`)
+  # model: claude-haiku-4-5
+
+  # Name of the env var holding the API key. Defaults:
+  #   anthropic -> ANTHROPIC_API_KEY
+  #   openai    -> OPENAI_API_KEY
+  #   ollama    -> (none; local Ollama needs no key)
+  # apiKeyEnv: ANTHROPIC_API_KEY
+
+  # Override the provider's API endpoint (advanced):
+  #   anthropic -> https://api.anthropic.com/v1/messages
+  #   openai    -> https://api.openai.com/v1/chat/completions
+  #   ollama    -> http://localhost:11434/api/chat
+  # baseUrl: http://localhost:11434/api/chat
+
+  # Anthropic-only: extra `anthropic-beta` header values. Ignored otherwise.
+  # betaHeaders: []
+
+# selection:
+#   maxFiles: 5
+#   maxAdditionalChars: 9500
+#   maxOutputTokens: 200
+#   timeoutMs: 8000          # ollama defaults to 30000 (cold model load)
+
+# cache:
+#   enabled: true
+#   ttlMin: 60
+#   evictionDays: 7
+#   dir: ~/.cache/memhook    # literal path; ~ is NOT expanded — use an absolute path
+
+# preFilter:
+#   enabled: true
+#   trivialWordsFile: ~/.config/memhook/trivial-words.txt
+
+# catalog:
+#   path: ~/.claude/cache/memory-catalog.txt
+
+# searchDirs:
+#   projectsRoot: ~/.claude/projects
+#   globalRulesDir: ~/.claude/rules
+
+# logging:
+#   jsonlPath: ~/.claude/logs/memhook.log

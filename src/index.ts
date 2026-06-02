@@ -6,12 +6,17 @@
  * here for programmatic embedding (tests, plugins, custom dashboards).
  */
 
-export { loadConfig, type MemhookConfig } from "./config.js";
+export { loadConfig, type MemhookConfig, type ProviderType } from "./config.js";
+export { loadYamlConfig, resolveConfigPath, type RawConfigFile } from "./configFile.js";
 export { route, type HookInput, type HookOutput } from "./router.js";
 export { buildCatalog, type CatalogBuildOptions } from "./catalog.js";
 export { LocalCache, type CacheKeyInput } from "./cache.js";
 export { PreFilter } from "./preFilter.js";
-export { AnthropicProvider } from "./providers/anthropic.js";
+export { MEMHOOK_VERSION } from "./version.js";
+export { createProvider } from "./providers/factory.js";
+export { AnthropicProvider, type AnthropicProviderOptions } from "./providers/anthropic.js";
+export { OpenAIProvider } from "./providers/openai.js";
+export { OllamaProvider } from "./providers/ollama.js";
 export type {
   Provider,
   ProviderConfig,
