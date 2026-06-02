@@ -32,6 +32,7 @@ files for each prompt and injects them as `additionalContext`.
 - 🤫 **Zero telemetry** — the only outbound call is the LLM endpoint _you_ chose.
 - 🪶 **One dependency** — `yaml`, with zero sub-deps.
 - ⚡ **Cached & pre-filtered** — an LRU cache + a trivial-prompt skip keep latency near zero.
+- 🧰 **One-command setup** — `memhook init` wires the hooks (with backup); `memhook tail` shows routing live.
 
 ## 🤔 Why
 
@@ -53,24 +54,27 @@ the most relevant ones. The rest sit on disk, invisible until they matter.
 
 ```bash
 npm install -g memhook
+export ANTHROPIC_API_KEY=sk-ant-…   # or see Providers for OpenAI / Ollama
+memhook init
 ```
 
-Then:
+`memhook init` detects your Claude Code config, wires the two hooks into
+`~/.claude/settings.json` (backing it up first, never clobbering existing
+hooks), and builds the initial catalog. It is idempotent and supports
+`--dry-run`. Restart Claude Code and you're done — then watch it work live
+with [`memhook tail`](#-observability).
 
-1. **Set your API key** (Anthropic by default — see [Providers](#-providers) for OpenAI / Ollama)
+<details>
+<summary>Manual setup (what <code>init</code> automates)</summary>
 
-   ```bash
-   export ANTHROPIC_API_KEY=sk-ant-…
-   ```
-
-2. **Build the initial catalog**
+1. **Build the initial catalog**
 
    ```bash
    memhook build-catalog
    # → ~/.claude/cache/memory-catalog.txt
    ```
 
-3. **Wire the hooks** in `~/.claude/settings.json`:
+2. **Wire the hooks** in `~/.claude/settings.json`:
 
    ```json
    {
@@ -80,6 +84,10 @@ Then:
      }
    }
    ```
+
+Remove it all later with `memhook uninstall` (also backs up first).
+
+</details>
 
 <details>
 <summary>From source (for contributors)</summary>
@@ -186,11 +194,27 @@ Every invocation appends one JSON line to `~/.claude/logs/memhook.log`:
   "cache_read": 13398,
   "additional_size_chars": 20225,
   "additional_size_tokens_est": 5056,
-  "status": "ok"
+  "status": "ok",
+  "model": "claude-haiku-4-5"
 }
 ```
 
-Useful one-liner to inspect the last 7 days:
+### Live view — `memhook tail`
+
+Watch routing decisions as they happen, in colour:
+
+```bash
+memhook tail                          # follow live (Ctrl-C to quit)
+memhook tail --no-follow              # print recent log + summary, then exit
+memhook tail --status ok,cache_hit    # filter by status
+memhook tail -n 50                    # show more history first
+```
+
+Each row shows the time, status, prompt preview, latency, and model, plus the
+memories that were injected; a summary line reports the cache-hit rate and
+p50/p95 latency. Colour degrades to plain text when piped or under `NO_COLOR`.
+`tail` only reads the log, so it can never affect the hook. For raw analysis,
+the log is plain JSONL — e.g. the last 7 days by status:
 
 ```bash
 jq -c 'select((.ts | fromdateiso8601) > (now - 7*86400)) | .status' \
@@ -223,7 +247,7 @@ model**, just without injected memories for that turn.
 ## 🗺️ Roadmap
 
 - `v0.2` ✅ — YAML config file, OpenAI provider, Ollama local provider (published on npm)
-- `v0.3` — `memhook init` setup wizard + TUI live monitor (`memhook tail`)
+- `v0.3` — `memhook init` / `memhook uninstall` setup wizard + zero-dep live monitor (`memhook tail`)
 - `v0.4` — Companion skills (`/wrap`, `/curate`, `/relay`)
 - `v1.0` — API frozen, cross-platform validated, listed on awesome-lists
 

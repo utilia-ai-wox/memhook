@@ -381,6 +381,10 @@ function logEntry(config: MemhookConfig, entry: LogEntry): void {
       additional_size_chars: entry.additionalSizeChars,
       additional_size_tokens_est: entry.additionalSizeTokensEst,
       status: entry.status,
+      // Additive field (v0.3) — the model that handled this turn. Read by
+      // `memhook tail`. The frozen log schema permits adding fields; never
+      // rename/remove existing ones (docs/SPECIFICATION.md §14).
+      model: config.provider.model,
     });
     appendFileSync(config.logging.jsonlPath, line + "\n", "utf8");
   } catch {

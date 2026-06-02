@@ -29,8 +29,8 @@
 - [ ] `npm run typecheck` passes
 - [ ] `npm test` passes (X/X)
 - [ ] `npm run build` succeeds
-- [ ] If the hook contract changed: `/smoke` was run against a sandbox
-- [ ] If `src/router.ts` or `src/providers/*` changed: the `failsoft-auditor` agent found zero violations
+- [ ] If the hook path changed (`router` / `cache` / `providers` / `preFilter` / `bin`): `/smoke` was run against a sandbox
+- [ ] If the hook path changed: the `failsoft-auditor` agent found zero violations
 - [ ] CHANGELOG impact — release-please will pick this up via Conventional Commits
 
 ## Breaking changes

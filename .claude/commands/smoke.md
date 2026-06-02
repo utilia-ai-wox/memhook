@@ -10,6 +10,10 @@ End-to-end smoke test of the memhook hook against a synthetic prompt,
 `~/.claude/logs/`**. Use this before opening a PR that changes anything
 under `src/router.ts`, `src/cache.ts`, `src/providers/`, or `bin/`.
 
+> Scope: `/smoke` exercises only `memhook run` (the hook contract). The
+> interactive commands `init` / `uninstall` / `tail` are not part of that
+> contract and are covered by their own unit tests + manual runs, not smoke.
+
 ## What it does
 
 1. Builds `dist/` if missing.

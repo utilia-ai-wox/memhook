@@ -1,6 +1,6 @@
 # Contributing to memhook
 
-memhook is an early-stage tool (currently 0.2.x, pre-1.0). Contributions are welcome,
+memhook is an early-stage tool (currently 0.x, pre-1.0). Contributions are welcome,
 but please open an issue first to discuss substantial changes.
 
 By participating you agree to abide by our
@@ -74,7 +74,8 @@ Co-Authored-By: Name <email@example.org>
 ### Allowed scopes
 
 `router`, `catalog`, `cache`, `prefilter`, `providers`, `bin`, `config`,
-`hooks`, `deps`, `ci`, `docs`, `tests`, `release`, `.claude`, `spec`.
+`hooks`, `init`, `tail`, `deps`, `ci`, `docs`, `tests`, `release`, `.claude`,
+`spec`.
 
 Scope is optional. If used, it must come from the list above (enforced
 by `commitlint.config.js`).

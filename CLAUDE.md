@@ -25,7 +25,7 @@ ask [`failsoft-auditor`](.claude/agents/failsoft-auditor.md) to review.
 
 - Node **18+** (CI matrix tests 18 / 20 / 22)
 - TypeScript **strict ESM** (no CommonJS), `tsc` → `dist/`
-- **vitest** for tests (`tests/*.test.ts`), 46 tests as of v0.2.2
+- **vitest** for tests (`tests/*.test.ts`), 77 tests as of v0.3
 - **bun** for development (`bun install`, `bun run test`); CI uses `npm`
 - CI runs on **GitHub-hosted runners** (Linux + macOS + Windows × Node
   18 / 20 / 22) — free for this public repo
@@ -52,7 +52,8 @@ memhook run            # read hook JSON from stdin, emit additionalContext
 
 ```
 src/        router · catalog · cache · preFilter · providers · config · configFile · version
-bin/        CLI entrypoint (`memhook run|build-catalog|version`)
+            ansi · install · init · tail   (init/uninstall/tail commands; not on the hook path)
+bin/        CLI entrypoint (`memhook run|build-catalog|init|uninstall|tail|version`)
 tests/      vitest suites — colocated with src/ they cover
 dist/       tsc output (gitignored, built on publish)
 docs/       SPECIFICATION.md (frozen dev contract)
@@ -73,6 +74,20 @@ docs/       SPECIFICATION.md (frozen dev contract)
 - **Multi-provider** — `MEMHOOK_PROVIDER` selects `anthropic` (default),
   `openai`, or `ollama` (local). Built via `createProvider()` in
   `src/providers/factory.ts`; all share `src/providers/http.ts`.
+
+## Shipped in v0.3
+
+- **`memhook init` / `memhook uninstall`** — interactive, zero-dependency
+  (`node:readline`) setup. The settings.json merge is a pure, unit-tested
+  transform in `src/install.ts` (idempotent, non-clobbering, backs up first,
+  refuses to overwrite unparseable JSON); `src/init.ts` is the I/O shell.
+- **`memhook tail`** — zero-dependency colourised live view of the JSONL log
+  (`src/tail.ts`, ANSI via `src/ansi.ts`). Pure parse/format + a polling
+  follow-loop. Reads the log only — never on the hook path.
+- **`model` field** added to the JSONL log (additive; frozen-schema safe).
+- **Fail-soft boundary**: only `memhook run` obeys the fail-soft contract;
+  `init`/`uninstall`/`tail` are interactive and may exit non-zero
+  (docs/SPECIFICATION.md §9).
 
 ## Working on this repo
 

@@ -290,6 +290,10 @@ memhook/
 │   ├── config.ts             — config resolver, env > yaml > default (§8.6)
 │   ├── configFile.ts         — YAML config loader (fail-soft)
 │   ├── version.ts            — MEMHOOK_VERSION (release-please-managed)
+│   ├── ansi.ts               — zero-dep ANSI styler (init/tail; TTY/NO_COLOR aware)
+│   ├── install.ts            — pure settings.json hook merge (init/uninstall core)
+│   ├── init.ts               — `memhook init` / `memhook uninstall` orchestration
+│   ├── tail.ts               — `memhook tail` live JSONL monitor
 │   └── providers/
 │       ├── types.ts          — Provider interface (§8.5)
 │       ├── http.ts           — shared postJsonWithRetry transport
@@ -301,14 +305,18 @@ memhook/
 ├── bin/
 │   └── memhook.ts            — CLI entrypoint
 │
-├── tests/                    — 46 tests across 7 suites
+├── tests/                    — 77 tests across 11 suites
 │   ├── router.test.ts
 │   ├── cache.test.ts
 │   ├── preFilter.test.ts
 │   ├── config.test.ts
 │   ├── factory.test.ts
 │   ├── openai.test.ts
-│   └── ollama.test.ts
+│   ├── ollama.test.ts
+│   ├── ansi.test.ts
+│   ├── install.test.ts
+│   ├── init.test.ts
+│   └── tail.test.ts
 │
 ├── dist/                     — tsc output, gitignored, built on publish
 │
@@ -501,16 +509,16 @@ reference.
 memhook <command> [options]
 ```
 
-| Command                 | Status | Purpose                                                                                                                                            |
-| ----------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `memhook run`           | v0.1   | Read hook JSON from stdin, emit `additionalContext`.                                                                                               |
-| `memhook build-catalog` | v0.1   | (Re)build `~/.claude/cache/memory-catalog.txt`.                                                                                                    |
-| `memhook version`       | v0.1   | Print `MEMHOOK_VERSION` (`src/version.ts`).                                                                                                        |
-| `memhook help`          | v0.1   | Print this command list + env var reference.                                                                                                       |
-| `memhook init`          | v0.3   | Interactive setup: detect Claude Code paths, write hook to `~/.claude/settings.json` (with backup), validate API key, bootstrap empty memory dirs. |
-| `memhook uninstall`     | v0.3   | Remove hooks from `~/.claude/settings.json` (with backup), prompt for cache + log cleanup.                                                         |
-| `memhook tail`          | v0.4   | Live TUI tail of the JSONL log (status distribution, p50/p95 latency, top memories, daily cost).                                                   |
-| `memhook bench`         | v0.5   | Run the 50-prompt bench suite against the configured provider; output recall + cost table.                                                         |
+| Command                 | Status | Purpose                                                                                                                                                                                   |
+| ----------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `memhook run`           | v0.1   | Read hook JSON from stdin, emit `additionalContext`.                                                                                                                                      |
+| `memhook build-catalog` | v0.1   | (Re)build `~/.claude/cache/memory-catalog.txt`.                                                                                                                                           |
+| `memhook version`       | v0.1   | Print `MEMHOOK_VERSION` (`src/version.ts`).                                                                                                                                               |
+| `memhook help`          | v0.1   | Print this command list + env var reference.                                                                                                                                              |
+| `memhook init`          | v0.3   | Interactive setup: detect Claude Code paths, write hook to `~/.claude/settings.json` (with backup), validate API key, bootstrap empty memory dirs.                                        |
+| `memhook uninstall`     | v0.3   | Remove hooks from `~/.claude/settings.json` (with backup), prompt for cache + log cleanup.                                                                                                |
+| `memhook tail`          | v0.3   | Live colourised tail of the JSONL log — time · status · prompt · latency · model + the injected memories, with a cache-rate + p50/p95 summary. Zero-dep ANSI, no TUI framework (see D20). |
+| `memhook bench`         | v0.5   | Run the 50-prompt bench suite against the configured provider; output recall + cost table.                                                                                                |
 
 `memhook run` is the only command that must obey the fail-soft
 contract. The others may exit non-zero on user error.
@@ -661,7 +669,8 @@ memhook writes one JSONL line per invocation to
   "cache_read": 13398,
   "additional_size_chars": 9412,
   "additional_size_tokens_est": 2353,
-  "status": "ok"
+  "status": "ok",
+  "model": "claude-haiku-4-5"
 }
 ```
 
@@ -677,6 +686,7 @@ memhook writes one JSONL line per invocation to
 | `additional_size_chars`      | integer                 | Length of the injected `additionalContext` string.                                         |
 | `additional_size_tokens_est` | integer                 | `floor(chars / 4)` rough estimate.                                                         |
 | `status`                     | string                  | One of the 11 values in [§8.1](#81-srcrouterts).                                           |
+| `model`                      | string                  | Provider model that handled the turn (added v0.3, see D21). Absent on pre-v0.3 lines.      |
 
 This log is the primary observability surface. Cost dashboards and
 the `memhook tail` TUI both parse it. The schema is **frozen**: new
@@ -694,29 +704,30 @@ are **per-provider** (e.g. Ollama timeout 30000, OpenAI model gpt-4o-mini);
 the table below shows the Anthropic-default values. Sensible defaults work
 for most users.
 
-| Variable                       | Default                                   | Type   | Purpose                                                       |
-| ------------------------------ | ----------------------------------------- | ------ | ------------------------------------------------------------- |
-| `MEMHOOK_ENABLED`              | `true`                                    | bool   | Master toggle.                                                |
-| `MEMHOOK_PROVIDER`             | `anthropic`                               | enum   | Provider: `anthropic` / `openai` / `ollama`.                  |
-| `MEMHOOK_MODEL`                | `claude-haiku-4-5`                        | string | Provider model id (per-provider default).                     |
-| `MEMHOOK_API_KEY_ENV`          | `ANTHROPIC_API_KEY`                       | string | Name of env var holding the API key.                          |
-| `MEMHOOK_BASE_URL`             | `https://api.anthropic.com/v1/messages`   | string | Provider endpoint (per-provider default).                     |
-| `MEMHOOK_CONFIG`               | `~/.config/memhook/config.yaml`           | path   | Optional YAML config file path.                               |
-| `MEMHOOK_MAX_FILES`            | `5`                                       | int    | Hard cap on number of files injected.                         |
-| `MEMHOOK_MAX_ADDITIONAL_CHARS` | `9500`                                    | int    | Soft cap on injection size (Claude Code stdout cap = 10 000). |
-| `MEMHOOK_MAX_OUTPUT_TOKENS`    | `200`                                     | int    | Provider's `max_tokens`.                                      |
-| `MEMHOOK_TIMEOUT_MS`           | `8000`                                    | int    | Provider call timeout.                                        |
-| `MEMHOOK_DISABLE_CACHE`        | `false`                                   | bool   | Skip the local LRU cache.                                     |
-| `MEMHOOK_DISABLE_PREFILTER`    | `false`                                   | bool   | Skip the trivial-prompt filter.                               |
-| `MEMHOOK_CACHE_TTL_MIN`        | `60`                                      | int    | Cache freshness in minutes.                                   |
-| `MEMHOOK_CACHE_EVICT_DAYS`     | `7`                                       | int    | Evict cache entries older than N days.                        |
-| `MEMHOOK_CACHE_DIR`            | `$HOME/.cache/memhook`                    | path   | Cache root.                                                   |
-| `MEMHOOK_CATALOG_PATH`         | `$HOME/.claude/cache/memory-catalog.txt`  | path   | Catalog file.                                                 |
-| `MEMHOOK_LOG_PATH`             | `$HOME/.claude/logs/memhook.log`          | path   | JSONL log file.                                               |
-| `MEMHOOK_TRIVIAL_FILE`         | `$HOME/.config/memhook/trivial-words.txt` | path   | User-editable trivial words.                                  |
-| `MEMHOOK_PROJECTS_ROOT`        | `$HOME/.claude/projects`                  | path   | Memory zones root (override for tests / sandbox).             |
-| `MEMHOOK_GLOBAL_RULES_DIR`     | `$HOME/.claude/rules`                     | path   | Global rules dir.                                             |
-| `MEMHOOK_DEBUG`                | `false`                                   | bool   | Print errors to stderr (default silent fail-soft).            |
+| Variable                        | Default                                   | Type   | Purpose                                                        |
+| ------------------------------- | ----------------------------------------- | ------ | -------------------------------------------------------------- |
+| `MEMHOOK_ENABLED`               | `true`                                    | bool   | Master toggle.                                                 |
+| `MEMHOOK_PROVIDER`              | `anthropic`                               | enum   | Provider: `anthropic` / `openai` / `ollama`.                   |
+| `MEMHOOK_MODEL`                 | `claude-haiku-4-5`                        | string | Provider model id (per-provider default).                      |
+| `MEMHOOK_API_KEY_ENV`           | `ANTHROPIC_API_KEY`                       | string | Name of env var holding the API key.                           |
+| `MEMHOOK_BASE_URL`              | `https://api.anthropic.com/v1/messages`   | string | Provider endpoint (per-provider default).                      |
+| `MEMHOOK_CONFIG`                | `~/.config/memhook/config.yaml`           | path   | Optional YAML config file path.                                |
+| `MEMHOOK_MAX_FILES`             | `5`                                       | int    | Hard cap on number of files injected.                          |
+| `MEMHOOK_MAX_ADDITIONAL_CHARS`  | `9500`                                    | int    | Soft cap on injection size (Claude Code stdout cap = 10 000).  |
+| `MEMHOOK_MAX_OUTPUT_TOKENS`     | `200`                                     | int    | Provider's `max_tokens`.                                       |
+| `MEMHOOK_TIMEOUT_MS`            | `8000`                                    | int    | Provider call timeout.                                         |
+| `MEMHOOK_DISABLE_CACHE`         | `false`                                   | bool   | Skip the local LRU cache.                                      |
+| `MEMHOOK_DISABLE_PREFILTER`     | `false`                                   | bool   | Skip the trivial-prompt filter.                                |
+| `MEMHOOK_CACHE_TTL_MIN`         | `60`                                      | int    | Cache freshness in minutes.                                    |
+| `MEMHOOK_CACHE_EVICT_DAYS`      | `7`                                       | int    | Evict cache entries older than N days.                         |
+| `MEMHOOK_CACHE_DIR`             | `$HOME/.cache/memhook`                    | path   | Cache root.                                                    |
+| `MEMHOOK_CATALOG_PATH`          | `$HOME/.claude/cache/memory-catalog.txt`  | path   | Catalog file.                                                  |
+| `MEMHOOK_LOG_PATH`              | `$HOME/.claude/logs/memhook.log`          | path   | JSONL log file.                                                |
+| `MEMHOOK_TRIVIAL_FILE`          | `$HOME/.config/memhook/trivial-words.txt` | path   | User-editable trivial words.                                   |
+| `MEMHOOK_PROJECTS_ROOT`         | `$HOME/.claude/projects`                  | path   | Memory zones root (override for tests / sandbox).              |
+| `MEMHOOK_GLOBAL_RULES_DIR`      | `$HOME/.claude/rules`                     | path   | Global rules dir.                                              |
+| `MEMHOOK_DEBUG`                 | `false`                                   | bool   | Print errors to stderr (default silent fail-soft).             |
+| `NO_COLOR` / `MEMHOOK_NO_COLOR` | _(unset)_                                 | flag   | Disable colour in `init` / `tail`; `FORCE_COLOR` forces it on. |
 
 ---
 
@@ -894,8 +905,8 @@ Proper nouns (Anthropic, Haiku, OpenAI) keep their case.
 | **v0.1.0-preview.N** | Bug fixes, observability tweaks, doc polish. No new features.                                                                                                                                                                    | continuous         |
 | **v0.1.0**           | First stable preview. Smoke harness for hook contract. Bench v2 ported to 50 prompts. `npm publish --tag preview`.                                                                                                               | 2026-06            |
 | **v0.2.0**           | OpenAI provider + Ollama provider. YAML config file. `docs/PROVIDERS.md` + `docs/CONFIG.md` + `docs/BENCH.md`. README cost table.                                                                                                | 2026-07            |
-| **v0.3.0**           | `memhook init` (Claude Code settings.json wizard with backup) + `memhook uninstall`. `npm publish --tag latest`. PR to `hesreallyhim/awesome-claude-code`.                                                                       | 2026-08            |
-| **v0.4.0**           | `memhook tail` TUI (Ink). Live status distribution + p50/p95 latency + top memories. **Descoped from v0.1.5 after the 2026-06-01 audit** (footprint 18 MB / 40 deps transitives — wait until adoption justifies it).             | 2026-09            |
+| **v0.3.0**           | `memhook init` (Claude Code settings.json wizard with backup) + `memhook uninstall` + `memhook tail` (zero-dep ANSI live monitor, pulled forward from v0.4 — see D20). `npm publish --tag latest`.                               | 2026-08            |
+| **v0.4.0**           | _Re-planned._ `memhook tail` shipped early in v0.3 as a zero-dep ANSI reader of the frozen JSONL log (D20), not the Ink TUI once slotted here — the 18 MB / 40-dep footprint that drove the descope no longer applied.           | 2026-09            |
 | **v0.5.0**           | Companion skills: `/wrap` (end-of-session journaling), `/curate` (memory hygiene audit), `/relay` (cross-session handoff prompt). Documented as optional.                                                                        | 2026-10            |
 | **v1.0.0**           | API freeze. SemVer commitment. Cross-OS testing. Bench v3 (100+ prompts). Polished README. Listing on awesome-lists.                                                                                                             | 2026-Q4            |
 
@@ -944,27 +955,30 @@ quarterly review issue, don't quietly push out dates in this file.
 Each row is a one-line decision with a date and a rationale link. Edits
 to this section are append-only — past decisions don't get rewritten.
 
-| ID  | Date       | Decision                                                               | Rationale                                                                                                                                                                                                                                                    |
-| --- | ---------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| D1  | 2026-06-01 | Renamed `memflow` → `memhook`                                          | npm + GitHub squatters + Rust forensics SEO collision. See [audit §3](private/MEMORY-GUARD-PLAN-AUDIT-2026-06-01.md#3-differentiator-vs-oss-comparables) (private).                                                                                          |
-| D2  | 2026-06-01 | `MEMHOOK_MAX_ADDITIONAL_CHARS` default 9 500 (was 32 000)              | Claude Code stdout cap = 10 000 chars; beyond that, spill-to-file silently. See [audit §1 F1](private/MEMORY-GUARD-PLAN-AUDIT-2026-06-01.md#1-factual-freshness--claims-vs-réalité-2026) (private).                                                          |
-| D3  | 2026-06-01 | Removed `anthropic-beta: extended-cache-ttl-2025-04-11` header         | 1 h TTL is GA in 2026; the beta header is obsolete.                                                                                                                                                                                                          |
-| D4  | 2026-06-01 | macOS + Linux only; Windows explicitly dropped                         | No Windows runner; POSIX assumed throughout.                                                                                                                                                                                                                 |
-| D5  | 2026-06-01 | TUI demoted from v0.1.5 to v0.4                                        | 18 MB / 40 transitive deps for Ink not justified before adoption. CLI + `--json` first.                                                                                                                                                                      |
-| D6  | 2026-06-01 | Removed `@file` streaming claim                                        | No Anthropic documentation guarantees `@file` resolution inside `additionalContext` injected by a hook.                                                                                                                                                      |
-| D7  | 2026-06-01 | Default model alias `claude-haiku-4-5` (un-snapshotted)                | Avoids 404 if Anthropic retires a dated snapshot.                                                                                                                                                                                                            |
-| D8  | 2026-06-01 | `MEMHOOK_LOG_PATH` field schema frozen                                 | Renaming a field requires a major version bump.                                                                                                                                                                                                              |
-| D9  | 2026-06-01 | npm publish gated to v0.1.0 (not preview.0)                            | Preview tag is for installs-from-source; publish only when the install one-liner is honest.                                                                                                                                                                  |
-| D10 | 2026-06-01 | Bench grown from 9 to 50 prompts at v0.1.0                             | Stat power too low at n=9 for CI reproducibility.                                                                                                                                                                                                            |
-| D11 | 2026-06-01 | Reversed D4 — Windows re-added as a supported OS                       | GitHub Actions is free for public repos, so the CI-credit + runner constraint behind D4 no longer applies. memhook is a dependency-free Node CLI; only `cwdToSlug` needed backslash-normalisation. CI runs Linux + macOS + Windows on github-hosted runners. |
-| D12 | 2026-06-02 | OpenAI + Ollama providers + YAML config shipped (v0.2.0)               | Multi-provider via `createProvider` factory; YAML opt-in, env > yaml > default.                                                                                                                                                                              |
-| D13 | 2026-06-02 | Dropped committed lockfile (`9fb393f`); CI + publish use `npm install` | Avoided an npm cross-platform optional-dep bug.                                                                                                                                                                                                              |
-| D14 | 2026-06-02 | npm publish automated via Trusted Publishing (OIDC) + `--provenance`   | Supersedes D9's manual plan; no `NPM_TOKEN`, signed provenance.                                                                                                                                                                                              |
-| D15 | 2026-06-02 | release-please-action bumped v4 → v5                                   | Stay on the maintained major.                                                                                                                                                                                                                                |
-| D16 | 2026-06-02 | Dropped the `-preview` suffix; plain `0.x` tags                        | `0.x` already signals an unstable API (SemVer §4); `-preview` was redundant.                                                                                                                                                                                 |
-| D17 | 2026-06-02 | Added `provider_init_failed` status                                    | `createProvider()` throws are caught + logged, preserving fail-soft.                                                                                                                                                                                         |
-| D18 | 2026-06-02 | Cache key gains a `provider` (`type:model`) component                  | Switching provider/model must never serve a stale selection.                                                                                                                                                                                                 |
-| D19 | 2026-06-02 | Added runtime dep `yaml` (was zero-dep)                                | YAML config loader; `yaml` has zero sub-deps.                                                                                                                                                                                                                |
+| ID  | Date       | Decision                                                                | Rationale                                                                                                                                                                                                                                                                                                           |
+| --- | ---------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D1  | 2026-06-01 | Renamed `memflow` → `memhook`                                           | npm + GitHub squatters + Rust forensics SEO collision. See [audit §3](private/MEMORY-GUARD-PLAN-AUDIT-2026-06-01.md#3-differentiator-vs-oss-comparables) (private).                                                                                                                                                 |
+| D2  | 2026-06-01 | `MEMHOOK_MAX_ADDITIONAL_CHARS` default 9 500 (was 32 000)               | Claude Code stdout cap = 10 000 chars; beyond that, spill-to-file silently. See [audit §1 F1](private/MEMORY-GUARD-PLAN-AUDIT-2026-06-01.md#1-factual-freshness--claims-vs-réalité-2026) (private).                                                                                                                 |
+| D3  | 2026-06-01 | Removed `anthropic-beta: extended-cache-ttl-2025-04-11` header          | 1 h TTL is GA in 2026; the beta header is obsolete.                                                                                                                                                                                                                                                                 |
+| D4  | 2026-06-01 | macOS + Linux only; Windows explicitly dropped                          | No Windows runner; POSIX assumed throughout.                                                                                                                                                                                                                                                                        |
+| D5  | 2026-06-01 | TUI demoted from v0.1.5 to v0.4                                         | 18 MB / 40 transitive deps for Ink not justified before adoption. CLI + `--json` first.                                                                                                                                                                                                                             |
+| D6  | 2026-06-01 | Removed `@file` streaming claim                                         | No Anthropic documentation guarantees `@file` resolution inside `additionalContext` injected by a hook.                                                                                                                                                                                                             |
+| D7  | 2026-06-01 | Default model alias `claude-haiku-4-5` (un-snapshotted)                 | Avoids 404 if Anthropic retires a dated snapshot.                                                                                                                                                                                                                                                                   |
+| D8  | 2026-06-01 | `MEMHOOK_LOG_PATH` field schema frozen                                  | Renaming a field requires a major version bump.                                                                                                                                                                                                                                                                     |
+| D9  | 2026-06-01 | npm publish gated to v0.1.0 (not preview.0)                             | Preview tag is for installs-from-source; publish only when the install one-liner is honest.                                                                                                                                                                                                                         |
+| D10 | 2026-06-01 | Bench grown from 9 to 50 prompts at v0.1.0                              | Stat power too low at n=9 for CI reproducibility.                                                                                                                                                                                                                                                                   |
+| D11 | 2026-06-01 | Reversed D4 — Windows re-added as a supported OS                        | GitHub Actions is free for public repos, so the CI-credit + runner constraint behind D4 no longer applies. memhook is a dependency-free Node CLI; only `cwdToSlug` needed backslash-normalisation. CI runs Linux + macOS + Windows on github-hosted runners.                                                        |
+| D12 | 2026-06-02 | OpenAI + Ollama providers + YAML config shipped (v0.2.0)                | Multi-provider via `createProvider` factory; YAML opt-in, env > yaml > default.                                                                                                                                                                                                                                     |
+| D13 | 2026-06-02 | Dropped committed lockfile (`9fb393f`); CI + publish use `npm install`  | Avoided an npm cross-platform optional-dep bug.                                                                                                                                                                                                                                                                     |
+| D14 | 2026-06-02 | npm publish automated via Trusted Publishing (OIDC) + `--provenance`    | Supersedes D9's manual plan; no `NPM_TOKEN`, signed provenance.                                                                                                                                                                                                                                                     |
+| D15 | 2026-06-02 | release-please-action bumped v4 → v5                                    | Stay on the maintained major.                                                                                                                                                                                                                                                                                       |
+| D16 | 2026-06-02 | Dropped the `-preview` suffix; plain `0.x` tags                         | `0.x` already signals an unstable API (SemVer §4); `-preview` was redundant.                                                                                                                                                                                                                                        |
+| D17 | 2026-06-02 | Added `provider_init_failed` status                                     | `createProvider()` throws are caught + logged, preserving fail-soft.                                                                                                                                                                                                                                                |
+| D18 | 2026-06-02 | Cache key gains a `provider` (`type:model`) component                   | Switching provider/model must never serve a stale selection.                                                                                                                                                                                                                                                        |
+| D19 | 2026-06-02 | Added runtime dep `yaml` (was zero-dep)                                 | YAML config loader; `yaml` has zero sub-deps.                                                                                                                                                                                                                                                                       |
+| D20 | 2026-06-02 | `memhook tail` pulled v0.4 → v0.3, built zero-dep (ANSI) not Ink        | Revises D5. The live monitor is a colourised reader of the frozen JSONL log; raw ANSI + column layout (`src/ansi.ts`, `src/tail.ts`) needs no TUI framework, so the 18 MB / 40-dep Ink footprint behind the descope no longer applies. Keeps the 1-runtime-dep profile; colour degrades under `NO_COLOR` / non-TTY. |
+| D21 | 2026-06-02 | Added `model` field to the JSONL log (additive)                         | `memhook tail` shows which model handled each turn. Additive per the §14 frozen-schema rule (new fields allowed; none renamed/removed).                                                                                                                                                                             |
+| D22 | 2026-06-02 | `init`/`uninstall` settings merge is pure + unit-tested; never clobbers | The dangerous step (editing `~/.claude/settings.json`) is a pure transform (`src/install.ts`): idempotent, preserves unrelated hooks/keys, backs up before writing, aborts on unparseable JSON, `--dry-run` writes nothing.                                                                                         |
 
 ---
 
