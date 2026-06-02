@@ -14,6 +14,39 @@ export { LocalCache, type CacheKeyInput } from "./cache.js";
 export { PreFilter } from "./preFilter.js";
 export { MEMHOOK_VERSION } from "./version.js";
 export { createProvider } from "./providers/factory.js";
+export {
+  addHooks,
+  removeHooks,
+  memhookSubcommand,
+  MEMHOOK_HOOKS,
+  type Settings,
+  type HookEvent,
+  type AddResult,
+  type RemoveResult,
+} from "./install.js";
+export {
+  runInit,
+  runUninstall,
+  buildConfigObject,
+  backupPath,
+  type InitOptions,
+  type UninstallOptions,
+} from "./init.js";
+export {
+  runTail,
+  parseLogLine,
+  formatRow,
+  formatHeader,
+  formatFooter,
+  summarize,
+  emptyStats,
+  accumulate,
+  tailLines,
+  type LogRow,
+  type Stats,
+  type TailOptions,
+} from "./tail.js";
+export { makeAnsi, colorEnabled, visibleWidth, type Ansi, type AnsiOptions } from "./ansi.js";
 export { AnthropicProvider, type AnthropicProviderOptions } from "./providers/anthropic.js";
 export { OpenAIProvider } from "./providers/openai.js";
 export { OllamaProvider } from "./providers/ollama.js";

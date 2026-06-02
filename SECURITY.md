@@ -49,6 +49,9 @@ security-sensitive include:
 - Local `~/.claude/logs/memhook.log` writes are by design and contain
   only metadata + an 80-character prompt preview. If you want stricter
   redaction, configure `MEMHOOK_LOG_PATH` to `/dev/null`.
+- `memhook init` / `memhook uninstall` modify `~/.claude/settings.json` only
+  on explicit invocation. They back the file up first, never alter unrelated
+  hooks or keys, and refuse to overwrite a file that isn't valid JSON.
 - Behaviour observed only when the user has explicitly disabled the
   fail-soft path (e.g. forced `set -e` in a custom hook wrapper).
 

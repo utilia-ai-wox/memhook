@@ -53,6 +53,17 @@ For each violation, report `path:line` + 1-line description + suggested fix.
    user-supplied filename without basename sanitisation
    (path traversal via `../../etc/passwd` style).
 
+## Out of scope — interactive commands
+
+Only `memhook run` (the hook) must obey the fail-soft contract. The interactive
+commands — `memhook init`, `memhook uninstall`, `memhook tail` (`src/init.ts`,
+`src/tail.ts`, `src/ansi.ts`, `src/install.ts`, and the `init`/`uninstall`/`tail`
+branches of `bin/memhook.ts`) — are allowed to use the TTY, write to stdout, and
+exit non-zero on user error (docs/SPECIFICATION.md §9). Do **not** flag those as
+violations. They MUST, however, never be imported by `src/router.ts` or the
+`run` path — confirm that isolation holds (they are lazy-imported only in their
+own `bin` branches).
+
 ## Report format
 
 ```

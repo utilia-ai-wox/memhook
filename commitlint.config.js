@@ -47,6 +47,8 @@ export default {
         "bin",
         "config",
         "hooks",
+        "init",
+        "tail",
         "deps",
         "ci",
         "docs",

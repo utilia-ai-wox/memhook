@@ -1,31 +1,50 @@
 #!/usr/bin/env node
 /**
- * memhook CLI — three commands shipped in v0.1 preview:
+ * memhook CLI.
  *
  *   memhook run            Read stdin (Claude Code hook JSON), write hook output
  *   memhook build-catalog  Rebuild ~/.claude/cache/memory-catalog.txt
+ *   memhook init           Wire memhook into ~/.claude/settings.json (interactive)
+ *   memhook uninstall      Remove memhook's hooks from ~/.claude/settings.json
+ *   memhook tail           Pretty live view of the JSONL routing log
  *   memhook version        Print package version
  *
- * Designed to be wired into ~/.claude/settings.json hooks:
- *   "UserPromptSubmit": [{ "hooks": [{ "type": "command",
- *                                      "command": "memhook run" }] }]
- *   "SessionStart":     [{ "hooks": [{ "type": "command",
- *                                      "command": "memhook build-catalog" }] }]
+ * Only `run` obeys the fail-soft hook contract (never throws, never exits
+ * non-zero). The interactive commands (`init`/`uninstall`/`tail`) may exit
+ * non-zero on user error and are free to use the TTY — docs/SPECIFICATION.md §9.
+ *
+ * Wired into ~/.claude/settings.json hooks (see `memhook init`):
+ *   "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "memhook run" }] }]
+ *   "SessionStart":     [{ "hooks": [{ "type": "command", "command": "memhook build-catalog" }] }]
  */
 
 import { route } from "../src/router.js";
 import { buildCatalog } from "../src/catalog.js";
-import { loadConfig } from "../src/config.js";
+import { loadConfig, type ProviderType } from "../src/config.js";
+import { runInit, runUninstall } from "../src/init.js";
+import { runTail } from "../src/tail.js";
 import { MEMHOOK_VERSION as VERSION } from "../src/version.js";
+
+const PROVIDERS = ["anthropic", "openai", "ollama"];
 
 async function main(): Promise<void> {
   const cmd = process.argv[2] ?? "help";
+  const args = process.argv.slice(3);
   switch (cmd) {
     case "run":
       await cmdRun();
       break;
     case "build-catalog":
       cmdBuildCatalog();
+      break;
+    case "init":
+      process.exitCode = await cmdInit(args);
+      break;
+    case "uninstall":
+      process.exitCode = await cmdUninstall(args);
+      break;
+    case "tail":
+      process.exitCode = await cmdTail(args);
       break;
     case "version":
     case "--version":
@@ -75,6 +94,109 @@ function cmdBuildCatalog(): void {
   );
 }
 
+async function cmdInit(args: string[]): Promise<number> {
+  const { flags } = parseArgs(args, BOOL_INIT);
+  let provider: ProviderType | undefined;
+  if (typeof flags["provider"] === "string") {
+    if (!PROVIDERS.includes(flags["provider"])) {
+      process.stderr.write(`memhook init: unknown provider "${flags["provider"]}"\n`);
+      return 1;
+    }
+    provider = flags["provider"] as ProviderType;
+  }
+  return runInit({
+    yes: flags["yes"] === true,
+    dryRun: flags["dry-run"] === true,
+    provider,
+    apiKeyEnv: strFlag(flags["api-key-env"]),
+    model: strFlag(flags["model"]),
+    bin: strFlag(flags["bin"]) ?? "memhook",
+    settingsPath: strFlag(flags["settings"]),
+    noCatalog: flags["no-catalog"] === true,
+  });
+}
+
+async function cmdUninstall(args: string[]): Promise<number> {
+  const { flags } = parseArgs(args, BOOL_UNINSTALL);
+  return runUninstall({
+    yes: flags["yes"] === true,
+    dryRun: flags["dry-run"] === true,
+    settingsPath: strFlag(flags["settings"]),
+    purge: flags["purge"] === true,
+  });
+}
+
+async function cmdTail(args: string[]): Promise<number> {
+  const { flags } = parseArgs(args, BOOL_TAIL);
+  const linesRaw = strFlag(flags["lines"]);
+  const lines = linesRaw !== undefined && /^\d+$/.test(linesRaw) ? Number(linesRaw) : 10;
+  const statusRaw = strFlag(flags["status"]);
+  const status = statusRaw
+    ? statusRaw
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean)
+    : undefined;
+  return runTail({
+    file: strFlag(flags["file"]),
+    lines,
+    noFollow: flags["no-follow"] === true,
+    status,
+  });
+}
+
+// ── tiny flag parser ─────────────────────────────────────────────────────────
+
+const BOOL_INIT = new Set(["yes", "dry-run", "no-catalog"]);
+const BOOL_UNINSTALL = new Set(["yes", "dry-run", "purge"]);
+const BOOL_TAIL = new Set(["no-follow"]);
+
+const SHORT: Record<string, string> = { "-y": "--yes", "-n": "--lines" };
+
+function strFlag(v: string | boolean | undefined): string | undefined {
+  return typeof v === "string" ? v : undefined;
+}
+
+/**
+ * Parse `--key value`, `--key=value`, and boolean flags (those listed in
+ * `bools`, plus any `--key` not followed by a value). Unknown long flags that
+ * take a value consume the next non-dash token.
+ */
+function parseArgs(
+  args: string[],
+  bools: Set<string>,
+): { flags: Record<string, string | boolean>; positionals: string[] } {
+  const flags: Record<string, string | boolean> = {};
+  const positionals: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const raw = args[i];
+    if (raw === undefined) continue;
+    const a = SHORT[raw] ?? raw;
+    if (!a.startsWith("--")) {
+      positionals.push(a);
+      continue;
+    }
+    const key = a.slice(2);
+    const eq = key.indexOf("=");
+    if (eq >= 0) {
+      flags[key.slice(0, eq)] = key.slice(eq + 1);
+      continue;
+    }
+    if (bools.has(key)) {
+      flags[key] = true;
+      continue;
+    }
+    const next = args[i + 1];
+    if (next !== undefined && !next.startsWith("-")) {
+      flags[key] = next;
+      i++;
+    } else {
+      flags[key] = true;
+    }
+  }
+  return { flags, positionals };
+}
+
 function readStdin(): Promise<string> {
   return new Promise((resolve, reject) => {
     let data = "";
@@ -89,30 +211,53 @@ function printHelp(): void {
   console.log(`memhook ${VERSION}
 
 USAGE
-  memhook <command>
+  memhook <command> [options]
 
 COMMANDS
   run                Read Claude Code hook JSON from stdin, emit additionalContext
   build-catalog      Rebuild the memory catalog at $MEMHOOK_CATALOG_PATH
+  init               Wire memhook into ~/.claude/settings.json (with backup)
+  uninstall          Remove memhook's hooks from ~/.claude/settings.json
+  tail               Pretty live view of the routing log (status, latency, memories)
   version            Print version
   help               Show this message
+
+init OPTIONS
+  --provider <p>     anthropic | openai | ollama (else prompted; default anthropic)
+  --api-key-env <n>  env var holding the API key (default per provider)
+  --model <m>        override the model id
+  --bin <name>       command written into settings.json (default: memhook)
+  --settings <path>  settings file to patch (default: ~/.claude/settings.json)
+  --no-catalog       skip the initial catalog build
+  --dry-run          print the plan, write nothing
+  -y, --yes          non-interactive (accept defaults / flags)
+
+uninstall OPTIONS
+  --settings <path>  settings file to patch (default: ~/.claude/settings.json)
+  --dry-run          print the plan, write nothing
+  -y, --yes          non-interactive
+  --purge            also report cache + log locations to clean up
+
+tail OPTIONS
+  -n, --lines <N>    history lines to show before following (default: 10)
+  --no-follow        print the recent log + summary, then exit (no live follow)
+  --status <a,b>     only show these statuses (e.g. ok,cache_hit)
+  --file <path>      log file to read (default: $MEMHOOK_LOG_PATH)
 
 ENV VARS
   MEMHOOK_ENABLED                 toggle (default: true)
   MEMHOOK_PROVIDER                anthropic | openai | ollama (default: anthropic)
   MEMHOOK_MODEL                   model id (per-provider default if unset)
   MEMHOOK_API_KEY_ENV             env var name holding the API key
-                                  (anthropic: ANTHROPIC_API_KEY, openai: OPENAI_API_KEY,
-                                   ollama: none required)
   MEMHOOK_BASE_URL                override the provider API endpoint
   MEMHOOK_CONFIG                  path to a YAML config file
-                                  (default: ~/.config/memhook/config.yaml)
+  MEMHOOK_LOG_PATH                JSONL log path (read by 'memhook tail')
   MEMHOOK_MAX_FILES               file-count cap (default: 5)
   MEMHOOK_MAX_ADDITIONAL_CHARS    injection size cap (default: 9500)
-  MEMHOOK_MAX_OUTPUT_TOKENS       model output cap (default: 200)
   MEMHOOK_TIMEOUT_MS              request timeout (default: 8000; ollama: 30000)
   MEMHOOK_DISABLE_CACHE=true      skip local LRU cache
   MEMHOOK_DISABLE_PREFILTER=true  skip trivial-prompt skip
+  NO_COLOR / MEMHOOK_NO_COLOR     disable colour in init/tail output
   MEMHOOK_DEBUG=true              print errors to stderr (default: silent fail-soft)
 
 PROVIDERS
