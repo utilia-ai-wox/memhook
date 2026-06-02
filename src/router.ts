@@ -35,6 +35,8 @@ import { LocalCache } from "./cache.js";
 import { loadConfig, type MemhookConfig } from "./config.js";
 import { PreFilter } from "./preFilter.js";
 import { createProvider } from "./providers/factory.js";
+import { claudeCodeAdapter } from "./adapters/claudeCode.js";
+import type { HarnessAdapter, HarnessInput, RouteResult } from "./adapters/types.js";
 
 const SAFE_BASENAME_RE = /^[A-Za-z0-9._-]+\.md$/;
 
@@ -71,36 +73,61 @@ interface LogEntry {
   status: string;
 }
 
-const EMPTY: HookOutput = {
-  hookSpecificOutput: {
-    hookEventName: "UserPromptSubmit",
-    additionalContext: "",
-  },
-};
+/** The harness-agnostic empty outcome: inject nothing, no nudge (fail-soft). */
+const EMPTY_RESULT: RouteResult = { additionalContext: "" };
 
+/**
+ * Claude Code hook entry point. Unchanged signature and output shape — a thin
+ * wrapper that drives the harness-agnostic pipeline through the Claude Code
+ * adapter (src/adapters/claudeCode.ts). Byte-identical to the pre-adapter hook.
+ */
 export async function route(
   stdinJson: string,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<HookOutput> {
+  return runHarness(claudeCodeAdapter, stdinJson, env);
+}
+
+/**
+ * Generic harness entry point: parse the host's stdin into `{prompt, cwd}` with
+ * the adapter, run the selection pipeline, then serialise the result into the
+ * host's stdout envelope with the same adapter. The pipeline (`selectMemory`) is
+ * identical for every host; only `parseInput` / `formatOutput` differ.
+ */
+export async function runHarness<T>(
+  adapter: HarnessAdapter<T>,
+  stdinJson: string,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<T> {
+  const result = await selectMemory(stdinJson, adapter.parseInput, env);
+  return adapter.formatOutput(result);
+}
+
+/**
+ * Harness-agnostic selection pipeline. Owns the config gate, prefilter, catalog
+ * + API-key checks, the local cache, the provider call, file injection, the
+ * JSONL log, and the `/curate` nudge. Every error path returns `EMPTY_RESULT`
+ * (fail-soft) — the hook never throws out of here.
+ */
+async function selectMemory(
+  stdinJson: string,
+  parseInput: (raw: string) => HarnessInput | null,
+  env: NodeJS.ProcessEnv,
+): Promise<RouteResult> {
   const config = loadConfig(env);
   ensureDirs(config);
   evictStale(config);
 
-  if (!config.enabled) return EMPTY;
+  if (!config.enabled) return EMPTY_RESULT;
 
-  let input: HookInput;
-  try {
-    input = JSON.parse(stdinJson) as HookInput;
-  } catch {
-    return EMPTY;
-  }
-  if (!input.prompt || typeof input.prompt !== "string") return EMPTY;
+  const input = parseInput(stdinJson);
+  if (!input || !input.prompt || typeof input.prompt !== "string") return EMPTY_RESULT;
   const cwd = input.cwd ?? process.cwd();
 
   const preFilter = new PreFilter(config.preFilter.trivialWordsFile, config.preFilter.defaultWords);
   if (config.preFilter.enabled && preFilter.isTrivial(input.prompt)) {
     logEntry(config, baseLog(input.prompt, "pre_filter_skip"));
-    return EMPTY;
+    return EMPTY_RESULT;
   }
 
   // Read the catalog through a single fd: `fstat` gives the cache-key mtime and
@@ -122,7 +149,7 @@ export async function route(
     }
   } catch {
     logEntry(config, baseLog(input.prompt, "no_catalog"));
-    return EMPTY;
+    return EMPTY_RESULT;
   }
 
   // Provider-aware key gate: local providers (Ollama) need no API key.
@@ -130,7 +157,7 @@ export async function route(
   const apiKey = config.provider.apiKeyEnv ? env[config.provider.apiKeyEnv] : undefined;
   if (needsKey && !apiKey) {
     logEntry(config, baseLog(input.prompt, "no_api_key"));
-    return EMPTY;
+    return EMPTY_RESULT;
   }
 
   const cache = new LocalCache(config.cache.dir, config.cache.ttlMin, config.cache.evictionDays);
@@ -173,7 +200,7 @@ export async function route(
       provider = createProvider(config, apiKey);
     } catch {
       logEntry(config, baseLog(input.prompt, "provider_init_failed"));
-      return EMPTY;
+      return EMPTY_RESULT;
     }
     let resp;
     try {
@@ -185,7 +212,7 @@ export async function route(
       });
     } catch {
       logEntry(config, baseLog(input.prompt, "api_no_response"));
-      return EMPTY;
+      return EMPTY_RESULT;
     }
     latencyMs = resp.latencyMs;
     usage = resp.usage;
@@ -198,7 +225,7 @@ export async function route(
         cacheCreate: usage.cacheCreateTokens,
         cacheRead: usage.cacheReadTokens,
       });
-      return EMPTY;
+      return EMPTY_RESULT;
     }
     const extracted = extractJsonArray(resp.rawText);
     if (extracted === null) {
@@ -210,7 +237,7 @@ export async function route(
         cacheCreate: usage.cacheCreateTokens,
         cacheRead: usage.cacheReadTokens,
       });
-      return EMPTY;
+      return EMPTY_RESULT;
     }
     selectedJson = JSON.stringify(extracted);
     if (config.cache.enabled && selectedJson !== "[]") {
@@ -244,18 +271,15 @@ export async function route(
     status,
   });
 
-  const output: HookOutput = {
-    hookSpecificOutput: {
-      hookEventName: "UserPromptSubmit",
-      additionalContext: additional,
-    },
-  };
+  const result: RouteResult = { additionalContext: additional };
   // Proactive `/curate` nudge — best-effort, local-only, never affects the
   // additionalContext contract or fail-soft. `catalogContent` is already in hand
-  // (read above), so the catalog-size signal is free.
+  // (read above), so the catalog-size signal is free. The adapter serialises it
+  // into the host's notice channel (Claude Code: `systemMessage`); a host with
+  // no equivalent simply drops it.
   const nudge = maybeCurateNudge(config, catalogContent, Date.now());
-  if (nudge) output.systemMessage = nudge;
-  return output;
+  if (nudge) result.systemMessage = nudge;
+  return result;
 }
 
 function buildSystemPrompt(catalog: string): string {
