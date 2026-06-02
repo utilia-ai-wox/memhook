@@ -122,7 +122,8 @@ by `commitlint.config.js`).
 
 - Workflows live in `.github/workflows/`:
   - `ci.yml` — lint + format + typecheck + test + build on every push to
-    `main`, `feature/**`, `fix/**`, and every PR to `main`.
+    `main` and every PR to `main` (branch work is validated via the PR, not a
+    second `push` run — see SPECIFICATION decision log D24).
   - `release-please.yml` — opens an automatic release PR when releasable
     commits land on `main`.
   - `codeql.yml` — weekly security scan + on every push/PR.
