@@ -54,6 +54,8 @@ export interface RawConfigFile {
   resurfaceHostLoaded?: boolean;
   /** Extra `.md` source dirs; validated + narrowed by `resolveCustomSources`. */
   customSources?: unknown;
+  /** Built-in host preset names; validated by `resolvePresetNames`. */
+  presets?: unknown;
   logging?: {
     jsonlPath?: string;
   };
