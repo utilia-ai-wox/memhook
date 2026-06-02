@@ -190,6 +190,22 @@ describe("router", () => {
     vi.unstubAllGlobals();
   });
 
+  it("injects a file from an enabled host preset (continue)", async () => {
+    const dir = join(root, ".continue", "rules");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "note_preset.md"), "Preset note content Q");
+    const cfgPath = join(root, "preset.yaml");
+    writeFileSync(cfgPath, `presets:\n  - continue\n`);
+    vi.stubGlobal("fetch", mockFetch('["note_preset.md"]'));
+    const result = await route(JSON.stringify({ prompt: "preset-src", cwd: root }), {
+      ...env,
+      MEMHOOK_CONFIG: cfgPath,
+    });
+    expect(result.hookSpecificOutput.additionalContext).toContain("Preset note content Q");
+    expect(readFileSync(logPath, "utf8")).toContain('"status":"ok"');
+    vi.unstubAllGlobals();
+  });
+
   it("returns empty + status provider_init_failed when construction throws", async () => {
     // A YAML config with an empty model forces the Anthropic constructor to
     // throw; the router must catch it and fail-soft rather than crash the hook.

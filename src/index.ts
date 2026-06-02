@@ -15,10 +15,17 @@ export { buildCatalog, type CatalogBuildOptions } from "./catalog.js";
 export {
   resolveCustomSources,
   activeCustomSources,
+  resolveSources,
+  expandPresets,
+  resolvePresetNames,
+  isPresetName,
   globToRegExp,
   expandHome,
+  HOST_PRESETS,
+  PRESET_NAMES,
   type CustomSource,
   type SourceScope,
+  type PresetDef,
 } from "./sources.js";
 export { LocalCache, type CacheKeyInput } from "./cache.js";
 export { PreFilter } from "./preFilter.js";

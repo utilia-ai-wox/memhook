@@ -15,7 +15,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { loadYamlConfig } from "./configFile.js";
-import { resolveCustomSources, type CustomSource } from "./sources.js";
+import { resolveCustomSources, resolvePresetNames, type CustomSource } from "./sources.js";
 import { MEMHOOK_VERSION } from "./version.js";
 
 export type ProviderType = "anthropic" | "openai" | "ollama";
@@ -84,6 +84,13 @@ export interface MemhookConfig {
    * project. YAML-only (`customSources:`), default empty. See `src/sources.ts`.
    */
   customSources: CustomSource[];
+  /**
+   * Enabled built-in host presets (e.g. `continue`, `cline`) — named bundles of
+   * sources for a known tool's `.md` convention, expanded against cwd/home at
+   * catalog/router time. YAML-only (`presets:`), default empty. All presets are
+   * experimental (doc-verified, not live-tested). See `src/sources.ts`.
+   */
+  presets: string[];
   logging: {
     jsonlPath: string;
   };
@@ -284,6 +291,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): MemhookConfig 
     ],
     resurfaceHostLoaded: bool("MEMHOOK_RESURFACE_HOST_LOADED", yaml?.resurfaceHostLoaded, false),
     customSources: resolveCustomSources(yaml?.customSources, home),
+    presets: resolvePresetNames(yaml?.presets),
     logging: {
       jsonlPath: str(
         "MEMHOOK_LOG_PATH",

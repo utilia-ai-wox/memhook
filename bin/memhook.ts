@@ -18,9 +18,11 @@
  *   "SessionStart":     [{ "hooks": [{ "type": "command", "command": "memhook build-catalog" }] }]
  */
 
+import { homedir } from "node:os";
 import { route } from "../src/router.js";
 import { buildCatalog } from "../src/catalog.js";
 import { loadConfig, type ProviderType } from "../src/config.js";
+import { resolveSources } from "../src/sources.js";
 import { runInit, runUninstall } from "../src/init.js";
 import { runTail } from "../src/tail.js";
 import { runSkills, type SkillsSubcommand } from "../src/skillsCmd.js";
@@ -92,11 +94,12 @@ async function cmdRun(): Promise<void> {
 
 function cmdBuildCatalog(): void {
   const config = loadConfig();
+  const cwd = process.cwd();
   const result = buildCatalog({
-    cwd: process.cwd(),
+    cwd,
     outputPath: config.catalog.path,
     resurfaceHostLoaded: config.resurfaceHostLoaded,
-    customSources: config.customSources,
+    customSources: resolveSources(config.customSources, config.presets, cwd, homedir()),
   });
   process.stderr.write(
     `[memhook build-catalog] ${config.catalog.path} — ${result.lines}L, ${result.bytes}B\n`,

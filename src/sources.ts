@@ -88,3 +88,144 @@ export function activeCustomSources(
 ): CustomSource[] {
   return sources.filter((s) => !s.hostAutoLoaded || resurfaceHostLoaded);
 }
+
+// ── Built-in per-host presets ────────────────────────────────────────────────
+//
+// A preset is a named bundle of CustomSource templates for a known tool's
+// memory/instruction convention, so a user cables onto it with `presets:
+// [continue]` instead of hand-writing the paths. EVERY preset is doc-verified
+// against the tool's official docs but NOT live-tested by us, so it is shipped
+// EXPERIMENTAL (docs/SPECIFICATION.md §24 "supported = tested"); a live echo-test
+// promotes it. Convention sources: docs/private/host-source-presets-SPEC-2026-06-02.md.
+//
+// Only ATOMIC `.md` conventions are presets here — monolithic files (AGENTS.md,
+// GEMINI.md, ~/.codex/AGENTS.md, …) are `/import` migration targets, not sources
+// (routing one big file whole is a no-op for relevance selection).
+
+interface PresetSourceDef {
+  /** Resolve `rel` against the project cwd or the home directory. */
+  readonly base: "cwd" | "home";
+  readonly rel: string;
+  readonly glob: string;
+  readonly scope: SourceScope;
+  readonly hostAutoLoaded: boolean;
+}
+
+export interface PresetDef {
+  /** Doc-verified, not live-tested → always experimental until an echo-test. */
+  readonly experimental: true;
+  readonly summary: string;
+  readonly sources: readonly PresetSourceDef[];
+}
+
+/** Built-in presets keyed by name. Atomic `.md` conventions only. */
+export const HOST_PRESETS: Record<string, PresetDef> = {
+  cline: {
+    experimental: true,
+    summary: "Cline — .clinerules/ (project) + ~/Documents/Cline/Rules/ (global)",
+    sources: [
+      { base: "cwd", rel: ".clinerules", glob: "*.md", scope: "rules", hostAutoLoaded: true },
+      {
+        base: "home",
+        rel: join("Documents", "Cline", "Rules"),
+        glob: "*.md",
+        scope: "rules",
+        hostAutoLoaded: true,
+      },
+    ],
+  },
+  continue: {
+    experimental: true,
+    summary: "Continue.dev — .continue/rules/ (project + ~)",
+    sources: [
+      {
+        base: "cwd",
+        rel: join(".continue", "rules"),
+        glob: "*.md",
+        scope: "rules",
+        hostAutoLoaded: false,
+      },
+      {
+        base: "home",
+        rel: join(".continue", "rules"),
+        glob: "*.md",
+        scope: "rules",
+        hostAutoLoaded: false,
+      },
+    ],
+  },
+  copilot: {
+    experimental: true,
+    summary: "GitHub Copilot — .github/instructions/*.instructions.md (project)",
+    sources: [
+      {
+        base: "cwd",
+        rel: join(".github", "instructions"),
+        glob: "*.instructions.md",
+        scope: "rules",
+        hostAutoLoaded: false,
+      },
+    ],
+  },
+  windsurf: {
+    experimental: true,
+    summary: "Windsurf — .windsurf/rules/ (project)",
+    sources: [
+      {
+        base: "cwd",
+        rel: join(".windsurf", "rules"),
+        glob: "*.md",
+        scope: "rules",
+        hostAutoLoaded: false,
+      },
+    ],
+  },
+};
+
+/** All known preset names. */
+export const PRESET_NAMES: string[] = Object.keys(HOST_PRESETS);
+
+export function isPresetName(name: string): boolean {
+  return Object.prototype.hasOwnProperty.call(HOST_PRESETS, name);
+}
+
+/** Keep only valid, known preset names from untrusted YAML. Never throws. */
+export function resolvePresetNames(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((x): x is string => typeof x === "string" && isPresetName(x));
+}
+
+/**
+ * Expand preset names into concrete `CustomSource[]`, resolving each template's
+ * `cwd`/`home` base. Unknown names are skipped. Pure + total.
+ */
+export function expandPresets(names: readonly string[], cwd: string, home: string): CustomSource[] {
+  const out: CustomSource[] = [];
+  for (const name of names) {
+    const def = HOST_PRESETS[name];
+    if (!def) continue;
+    for (const s of def.sources) {
+      out.push({
+        dir: join(s.base === "cwd" ? cwd : home, s.rel),
+        glob: s.glob,
+        scope: s.scope,
+        hostAutoLoaded: s.hostAutoLoaded,
+      });
+    }
+  }
+  return out;
+}
+
+/**
+ * The full set of user-declared sources: explicit `customSources` plus the
+ * expanded built-in `presets`. The single place catalog + router agree on what
+ * "the custom sources" are, so they never diverge.
+ */
+export function resolveSources(
+  customSources: readonly CustomSource[],
+  presets: readonly string[],
+  cwd: string,
+  home: string,
+): CustomSource[] {
+  return [...customSources, ...expandPresets(presets, cwd, home)];
+}

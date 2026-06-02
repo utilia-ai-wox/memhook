@@ -5,6 +5,12 @@ import {
   globToRegExp,
   resolveCustomSources,
   activeCustomSources,
+  resolveSources,
+  expandPresets,
+  resolvePresetNames,
+  isPresetName,
+  HOST_PRESETS,
+  PRESET_NAMES,
   type CustomSource,
 } from "../src/sources.js";
 
@@ -102,5 +108,61 @@ describe("activeCustomSources", () => {
     const srcs = [mk("/a", false), mk("/b", true)];
     expect(activeCustomSources(srcs, false).map((s) => s.dir)).toEqual(["/a"]);
     expect(activeCustomSources(srcs, true).map((s) => s.dir)).toEqual(["/a", "/b"]);
+  });
+});
+
+describe("host presets", () => {
+  it("PRESET_NAMES are all known; isPresetName rejects the unknown", () => {
+    expect(PRESET_NAMES.length).toBeGreaterThan(0);
+    for (const n of PRESET_NAMES) expect(isPresetName(n)).toBe(true);
+    expect(isPresetName("nope")).toBe(false);
+  });
+
+  it("every preset is experimental and only ships atomic .md/.instructions.md sources", () => {
+    for (const def of Object.values(HOST_PRESETS)) {
+      expect(def.experimental).toBe(true);
+      expect(def.sources.length).toBeGreaterThan(0);
+      for (const s of def.sources) {
+        expect(["cwd", "home"]).toContain(s.base);
+        expect(s.glob.endsWith(".md")).toBe(true);
+      }
+    }
+  });
+
+  it("resolvePresetNames keeps known names, drops unknown / non-strings / non-arrays", () => {
+    expect(resolvePresetNames(["continue", "nope", 42, "cline"])).toEqual(["continue", "cline"]);
+    expect(resolvePresetNames("continue")).toEqual([]);
+    expect(resolvePresetNames(undefined)).toEqual([]);
+  });
+
+  it("expandPresets resolves cwd/home bases into CustomSource[], skips unknown", () => {
+    const out = expandPresets(["continue"], "/repo", "/home/u");
+    expect(out).toContainEqual({
+      dir: join("/repo", ".continue", "rules"),
+      glob: "*.md",
+      scope: "rules",
+      hostAutoLoaded: false,
+    });
+    expect(out).toContainEqual({
+      dir: join("/home/u", ".continue", "rules"),
+      glob: "*.md",
+      scope: "rules",
+      hostAutoLoaded: false,
+    });
+    expect(expandPresets(["nope"], "/r", "/h")).toEqual([]);
+  });
+
+  it("resolveSources concats explicit customSources then expanded presets", () => {
+    const custom: CustomSource[] = [
+      { dir: "/x", glob: "*.md", scope: "memory", hostAutoLoaded: false },
+    ];
+    const out = resolveSources(custom, ["windsurf"], "/repo", "/home/u");
+    expect(out[0]).toEqual(custom[0]);
+    expect(out).toContainEqual({
+      dir: join("/repo", ".windsurf", "rules"),
+      glob: "*.md",
+      scope: "rules",
+      hostAutoLoaded: false,
+    });
   });
 });
