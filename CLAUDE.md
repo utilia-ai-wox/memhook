@@ -25,7 +25,7 @@ ask [`failsoft-auditor`](.claude/agents/failsoft-auditor.md) to review.
 
 - Node **18+** (CI matrix tests 18 / 20 / 22)
 - TypeScript **strict ESM** (no CommonJS), `tsc` → `dist/`
-- **vitest** for tests (`tests/*.test.ts`), 18 tests as of v0.1.0-preview
+- **vitest** for tests (`tests/*.test.ts`), 46 tests as of v0.2.2
 - **bun** for development (`bun install`, `bun run test`); CI uses `npm`
 - CI runs on **GitHub-hosted runners** (Linux + macOS + Windows × Node
   18 / 20 / 22) — free for this public repo
@@ -55,7 +55,7 @@ src/        router · catalog · cache · preFilter · providers · config · co
 bin/        CLI entrypoint (`memhook run|build-catalog|version`)
 tests/      vitest suites — colocated with src/ they cover
 dist/       tsc output (gitignored, built on publish)
-docs/       RUNNERS.md (self-hosted CI setup)
+docs/       SPECIFICATION.md (frozen dev contract)
 ```
 
 ## Non-goals (still firm in v0.2)
