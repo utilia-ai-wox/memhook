@@ -9,4 +9,4 @@
  * the literal in lockstep with `package.json` + `.release-please-manifest.json`.
  * Do not bump it by hand.
  */
-export const MEMHOOK_VERSION = "0.3.0"; // x-release-please-version
+export const MEMHOOK_VERSION = "0.4.0"; // x-release-please-version

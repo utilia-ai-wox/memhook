@@ -1,6 +1,6 @@
 {
   "name": "memhook",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Semantic memory router for Claude Code — picks relevant feedbacks & rules per prompt via Haiku, injects them as additionalContext.",
   "type": "module",
   "license": "MIT",

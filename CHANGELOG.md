@@ -5,6 +5,13 @@ All notable changes to memhook are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0](https://github.com/utilia-ai-wox/memhook/compare/v0.3.0...v0.4.0) (2026-06-02)
+
+
+### Features
+
+* companion skills (/wrap /curate /relay) + installer + nudge ([#32](https://github.com/utilia-ai-wox/memhook/issues/32)) ([3ede75d](https://github.com/utilia-ai-wox/memhook/commit/3ede75dd94cd5383a54dd0540b34b308e649a696))
+
 ## [0.3.0](https://github.com/utilia-ai-wox/memhook/compare/v0.2.2...v0.3.0) (2026-06-02)
 
 
