@@ -1,11 +1,12 @@
 name: CI
 
 on:
+  # `push` only on main (post-merge signal). All branch work is validated via
+  # the `pull_request` event — triggering on BOTH push and pull_request for the
+  # same head doubled every check, wasted runners, and produced duplicate check
+  # runs that stalled the PR merge-gate display. See decision log D24.
   push:
-    branches:
-      - main
-      - "feature/**"
-      - "fix/**"
+    branches: [main]
   pull_request:
     branches: [main]
 
