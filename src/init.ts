@@ -23,6 +23,8 @@ import { addHooks, removeHooks, type Settings } from "./install.js";
 import { buildCatalog } from "./catalog.js";
 import { loadConfig, type ProviderType } from "./config.js";
 import { makeAnsi, type Ansi } from "./ansi.js";
+import { backupPath, stampNow } from "./backup.js";
+import { installCompanionSkills } from "./skillsCmd.js";
 
 const PROVIDERS: ProviderType[] = ["anthropic", "openai", "ollama"];
 const DEFAULT_KEY_ENV: Record<ProviderType, string | undefined> = {
@@ -40,6 +42,8 @@ export interface InitOptions {
   bin: string;
   settingsPath?: string | undefined;
   noCatalog?: boolean | undefined;
+  /** Tri-state: undefined = ask (interactive) or default-install; true/false force it. */
+  skills?: boolean | undefined;
 }
 
 export interface UninstallOptions {
@@ -49,17 +53,9 @@ export interface UninstallOptions {
   purge?: boolean | undefined;
 }
 
-/** A backup path next to `path`, stamped so successive runs never collide. */
-export function backupPath(path: string, stamp: string): string {
-  return `${path}.bak-${stamp}`;
-}
-
-function stampNow(): string {
-  return new Date()
-    .toISOString()
-    .replace(/[:.]/g, "-")
-    .replace(/-(\d{3})Z$/, "Z");
-}
+// `backupPath` / `stampNow` live in ./backup.js (shared with skillsCmd.ts);
+// re-exported here so existing importers (index.ts, tests) keep working.
+export { backupPath } from "./backup.js";
 
 function defaultSettingsPath(): string {
   return join(homedir(), ".claude", "settings.json");
@@ -207,6 +203,9 @@ export async function runInit(
     );
   }
   if (!opts.noCatalog) io.out(`  ${ansi.green("+")} build catalog`);
+  if (opts.skills !== false) {
+    io.out(`  ${ansi.green("+")} companion skills ${ansi.dim("(/wrap /curate /relay)")}`);
+  }
 
   // 4. API-key heads-up (never blocks; just warns).
   if (provider !== "ollama" && apiKeyEnv && !env[apiKeyEnv]) {
@@ -264,6 +263,55 @@ export async function runInit(
       io.out(`${ansi.green("✓")} catalog ${config.catalog.path} ${ansi.dim(`(${res.lines}L)`)}`);
     } catch {
       io.out(ansi.yellow("! ") + "catalog build skipped (run `memhook build-catalog` later)");
+    }
+  }
+
+  // 8. Companion skills (/wrap, /curate, /relay) — opt-in, non-clobbering. The
+  //    install only writes absent skills (never overwrites a user edit without
+  //    --force), so default-on in --yes mode is safe; interactive mode asks.
+  let wantSkills = opts.skills;
+  if (wantSkills === undefined) {
+    if (interactive) {
+      const rl = createInterface({ input: process.stdin, output: process.stdout });
+      try {
+        const a = (
+          await rl.question(
+            `\nInstall companion skills ${ansi.dim("(/wrap /curate /relay)")} ${ansi.dim("[Y/n]")} `,
+          )
+        )
+          .trim()
+          .toLowerCase();
+        wantSkills = !(a === "n" || a === "no");
+      } finally {
+        rl.close();
+      }
+    } else {
+      wantSkills = true;
+    }
+  }
+  if (wantSkills) {
+    try {
+      const results = installCompanionSkills({});
+      const applied = results.filter((r) => r.applied).map((r) => `/${r.plan.name}`);
+      const blocked = results
+        .filter((r) => r.plan.action === "blocked")
+        .map((r) => `/${r.plan.name}`);
+      if (applied.length > 0) {
+        io.out(
+          `${ansi.green("✓")} skills ${applied.join(" ")} → ${join(homedir(), ".claude", "skills")}`,
+        );
+      } else if (blocked.length === 0) {
+        io.out(`${ansi.dim("·")} companion skills already installed ${ansi.dim("(skip)")}`);
+      }
+      if (blocked.length > 0) {
+        io.out(
+          `${ansi.yellow("!")} ${blocked.join(" ")} differ from shipped — left as-is ` +
+            ansi.dim("(memhook skills install --force to update)"),
+        );
+      }
+    } catch (err) {
+      io.out(ansi.yellow("! ") + "skill install skipped (run `memhook skills install` later)");
+      if (env["MEMHOOK_DEBUG"] === "true") process.stderr.write(`${String(err)}\n`);
     }
   }
 
@@ -339,6 +387,7 @@ export async function runUninstall(
     for (const target of [config.cache.dir, config.logging.jsonlPath]) {
       io.out(ansi.dim(`  (left in place: ${target} — remove manually if desired)`));
     }
+    io.out(ansi.dim("  (companion skills, if installed: remove with `memhook skills uninstall`)"));
   }
 
   io.out(`\n${ansi.green("Done.")} Restart Claude Code to drop the hooks.`);

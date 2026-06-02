@@ -58,3 +58,12 @@ provider:
 
 # logging:
 #   jsonlPath: ~/.claude/logs/memhook.log
+
+# Proactive /curate nudge. When the memory catalog grows past either threshold,
+# the router attaches a one-line systemMessage suggesting `/curate`. This is
+# local-only (no outbound call) and best-effort (never affects fail-soft).
+# curateNudge:
+#   enabled: true
+#   thresholdTokens: 15000   # estimated catalog tokens
+#   thresholdFiles: 250      # memory files (excludes MEMORY.md + journal/)
+#   cooldownDays: 7          # minimum days between nudges

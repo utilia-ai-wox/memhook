@@ -33,6 +33,30 @@ export {
   type UninstallOptions,
 } from "./init.js";
 export {
+  COMPANION_SKILLS,
+  SKILL_FILES,
+  isCompanionSkill,
+  diffSkill,
+  planInstall,
+  planUninstall,
+  type CompanionSkill,
+  type SkillSources,
+  type InstalledFiles,
+  type SkillStatus,
+  type InstallAction,
+  type SkillInstallPlan,
+  type SkillUninstallPlan,
+} from "./skills.js";
+export {
+  runSkills,
+  installCompanionSkills,
+  bundledSkillsDir,
+  type RunSkillsOptions,
+  type SkillsSubcommand,
+  type InstallSkillsOptions,
+  type SkillInstallResult,
+} from "./skillsCmd.js";
+export {
   runTail,
   parseLogLine,
   formatRow,

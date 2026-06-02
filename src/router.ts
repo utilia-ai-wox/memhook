@@ -22,6 +22,7 @@
 import {
   existsSync,
   readFileSync,
+  writeFileSync,
   openSync,
   fstatSync,
   closeSync,
@@ -47,6 +48,13 @@ export interface HookOutput {
     hookEventName: "UserPromptSubmit";
     additionalContext: string;
   };
+  /**
+   * Optional, additive (v0.4). A one-line warning shown to the user — used only
+   * for the `/curate` nudge when the catalog grows large. Documented Claude Code
+   * field; absent on every turn the nudge does not fire, so the existing output
+   * shape is unchanged for existing consumers (docs/SPECIFICATION.md §10.2).
+   */
+  systemMessage?: string;
 }
 
 interface LogEntry {
@@ -236,12 +244,18 @@ export async function route(
     status,
   });
 
-  return {
+  const output: HookOutput = {
     hookSpecificOutput: {
       hookEventName: "UserPromptSubmit",
       additionalContext: additional,
     },
   };
+  // Proactive `/curate` nudge — best-effort, local-only, never affects the
+  // additionalContext contract or fail-soft. `catalogContent` is already in hand
+  // (read above), so the catalog-size signal is free.
+  const nudge = maybeCurateNudge(config, catalogContent, Date.now());
+  if (nudge) output.systemMessage = nudge;
+  return output;
 }
 
 function buildSystemPrompt(catalog: string): string {
@@ -372,6 +386,80 @@ function evictStale(config: MemhookConfig): void {
     cache.evictStale();
   } catch {
     // silent — eviction is best-effort
+  }
+}
+
+/**
+ * Proactive `/curate` nudge. Returns a one-line `systemMessage` when the memory
+ * catalog has grown past a threshold and the cooldown has elapsed, else
+ * undefined. Local-only: it reads the already-loaded catalog length, counts
+ * memory files, and stamps a local cooldown file — NO outbound call. The whole
+ * body is wrapped so any failure yields no nudge (fail-soft is never affected).
+ *
+ * Cost: within the cooldown it pays one tiny stamp read and returns; only once
+ * the cooldown elapses does it count files (a readdir per memory dir, the same
+ * order of I/O the router already does in `readSelected`).
+ *
+ * Exported for direct unit testing.
+ */
+export function maybeCurateNudge(
+  config: MemhookConfig,
+  catalogContent: string,
+  now: number,
+): string | undefined {
+  try {
+    if (!config.curateNudge.enabled) return undefined;
+    const stampFile = join(config.cache.dir, ".curate-nudge");
+    const last = readNudgeStamp(stampFile);
+    if (last !== null && now - last < config.curateNudge.cooldownDays * 86_400_000) {
+      return undefined;
+    }
+    const tokensEst = Math.floor(catalogContent.length / 4);
+    const fileCount = countMemoryFiles(config.searchDirs[0]);
+    const over =
+      tokensEst >= config.curateNudge.thresholdTokens ||
+      fileCount >= config.curateNudge.thresholdFiles;
+    if (!over) return undefined;
+
+    writeNudgeStamp(stampFile, now);
+    const tokK = tokensEst >= 10_000 ? Math.round(tokensEst / 1000) : (tokensEst / 1000).toFixed(1);
+    return `📚 memhook: memory catalog is large (~${tokK}k tokens, ${fileCount} files). Run /curate to prune duplicate and stale entries.`;
+  } catch {
+    return undefined; // a nudge must never break fail-soft
+  }
+}
+
+/** Count top-level `*.md` memory files (excludes MEMORY.md and the journal/ subdir). */
+function countMemoryFiles(projectsRoot: string | undefined): number {
+  let total = 0;
+  for (const dir of listProjectsMemoryDirs(projectsRoot)) {
+    let entries: string[] = [];
+    try {
+      entries = readdirSync(dir);
+    } catch {
+      continue;
+    }
+    for (const e of entries) {
+      if (e.endsWith(".md") && e !== "MEMORY.md") total++;
+    }
+  }
+  return total;
+}
+
+function readNudgeStamp(file: string): number | null {
+  try {
+    const n = Number(readFileSync(file, "utf8").trim());
+    return Number.isFinite(n) ? n : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeNudgeStamp(file: string, now: number): void {
+  try {
+    writeFileSync(file, String(now), "utf8");
+  } catch {
+    // best-effort — a missed stamp just means the nudge may repeat
   }
 }
 

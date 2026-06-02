@@ -25,7 +25,7 @@ ask [`failsoft-auditor`](.claude/agents/failsoft-auditor.md) to review.
 
 - Node **18+** (CI matrix tests 18 / 20 / 22)
 - TypeScript **strict ESM** (no CommonJS), `tsc` → `dist/`
-- **vitest** for tests (`tests/*.test.ts`), 77 tests as of v0.3
+- **vitest** for tests (`tests/*.test.ts`), 106 tests as of v0.4
 - **bun** for development (`bun install`, `bun run test`); CI uses `npm`
 - CI runs on **GitHub-hosted runners** (Linux + macOS + Windows × Node
   18 / 20 / 22) — free for this public repo
@@ -53,7 +53,9 @@ memhook run            # read hook JSON from stdin, emit additionalContext
 ```
 src/        router · catalog · cache · preFilter · providers · config · configFile · version
             ansi · install · init · tail   (init/uninstall/tail commands; not on the hook path)
-bin/        CLI entrypoint (`memhook run|build-catalog|init|uninstall|tail|version`)
+            skills · skillsCmd · backup     (skills install/uninstall/list; not on the hook path)
+bin/        CLI entrypoint (`memhook run|build-catalog|init|uninstall|tail|skills|version`)
+skills/     bundled companion skills (wrap/ · curate/ · relay/) shipped in the npm tarball
 tests/      vitest suites — colocated with src/ they cover
 dist/       tsc output (gitignored, built on publish)
 docs/       SPECIFICATION.md (frozen dev contract)
@@ -88,6 +90,23 @@ docs/       SPECIFICATION.md (frozen dev contract)
 - **Fail-soft boundary**: only `memhook run` obeys the fail-soft contract;
   `init`/`uninstall`/`tail` are interactive and may exit non-zero
   (docs/SPECIFICATION.md §9).
+
+## Shipped in v0.4
+
+- **Companion skills** — three standalone Claude Code skills bundled in
+  `skills/` and installed into `~/.claude/skills/<name>/` by `memhook skills
+install`: `/wrap` (end-of-session wrap-up), `/curate` (memory hygiene),
+  `/relay` (fresh-session handoff). Standalone, not a plugin, so the names stay
+  bare (`/wrap`, not `/memhook:wrap`). The copy plan is a pure, unit-tested
+  transform in `src/skills.ts` (idempotent, non-clobbering, backs up edits);
+  `src/skillsCmd.ts` is the I/O shell. `memhook init` offers to install them.
+- **`/curate` nudge** — when the catalog grows past a threshold the router
+  attaches an additive `systemMessage` suggesting `/curate`
+  (`maybeCurateNudge` in `src/router.ts`). Local-only (no outbound call),
+  wrapped so it never affects fail-soft, config-toggleable
+  (`MEMHOOK_CURATE_NUDGE`), on a cooldown.
+- **`backup.ts`** — shared `backupPath`/`stampNow`, extracted so `init.ts` and
+  `skillsCmd.ts` don't import each other.
 
 ## Working on this repo
 

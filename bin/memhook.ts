@@ -23,9 +23,12 @@ import { buildCatalog } from "../src/catalog.js";
 import { loadConfig, type ProviderType } from "../src/config.js";
 import { runInit, runUninstall } from "../src/init.js";
 import { runTail } from "../src/tail.js";
+import { runSkills, type SkillsSubcommand } from "../src/skillsCmd.js";
+import { isCompanionSkill, type CompanionSkill } from "../src/skills.js";
 import { MEMHOOK_VERSION as VERSION } from "../src/version.js";
 
 const PROVIDERS = ["anthropic", "openai", "ollama"];
+const SKILLS_SUBCOMMANDS = ["install", "uninstall", "list"];
 
 async function main(): Promise<void> {
   const cmd = process.argv[2] ?? "help";
@@ -45,6 +48,9 @@ async function main(): Promise<void> {
       break;
     case "tail":
       process.exitCode = await cmdTail(args);
+      break;
+    case "skills":
+      process.exitCode = await cmdSkills(args);
       break;
     case "version":
     case "--version":
@@ -105,6 +111,9 @@ async function cmdInit(args: string[]): Promise<number> {
     }
     provider = flags["provider"] as ProviderType;
   }
+  let skills: boolean | undefined;
+  if (flags["no-skills"] === true) skills = false;
+  else if (flags["skills"] === true) skills = true;
   return runInit({
     yes: flags["yes"] === true,
     dryRun: flags["dry-run"] === true,
@@ -114,6 +123,33 @@ async function cmdInit(args: string[]): Promise<number> {
     bin: strFlag(flags["bin"]) ?? "memhook",
     settingsPath: strFlag(flags["settings"]),
     noCatalog: flags["no-catalog"] === true,
+    skills,
+  });
+}
+
+async function cmdSkills(args: string[]): Promise<number> {
+  const { flags, positionals } = parseArgs(args, BOOL_SKILLS);
+  const sub = positionals[0] ?? "list";
+  if (!SKILLS_SUBCOMMANDS.includes(sub)) {
+    process.stderr.write(
+      `memhook skills: unknown subcommand "${sub}" (install | uninstall | list)\n`,
+    );
+    return 1;
+  }
+  const names: CompanionSkill[] = [];
+  for (const n of positionals.slice(1)) {
+    if (!isCompanionSkill(n)) {
+      process.stderr.write(`memhook skills: unknown skill "${n}" (wrap | curate | relay)\n`);
+      return 1;
+    }
+    names.push(n);
+  }
+  return runSkills({
+    subcommand: sub as SkillsSubcommand,
+    names: names.length > 0 ? names : undefined,
+    yes: flags["yes"] === true,
+    dryRun: flags["dry-run"] === true,
+    force: flags["force"] === true,
   });
 }
 
@@ -148,9 +184,10 @@ async function cmdTail(args: string[]): Promise<number> {
 
 // ── tiny flag parser ─────────────────────────────────────────────────────────
 
-const BOOL_INIT = new Set(["yes", "dry-run", "no-catalog"]);
+const BOOL_INIT = new Set(["yes", "dry-run", "no-catalog", "skills", "no-skills"]);
 const BOOL_UNINSTALL = new Set(["yes", "dry-run", "purge"]);
 const BOOL_TAIL = new Set(["no-follow"]);
+const BOOL_SKILLS = new Set(["yes", "dry-run", "force"]);
 
 const SHORT: Record<string, string> = { "-y": "--yes", "-n": "--lines" };
 
@@ -220,6 +257,7 @@ COMMANDS
   init               Wire memhook into ~/.claude/settings.json (with backup)
   uninstall          Remove memhook's hooks from ~/.claude/settings.json
   tail               Pretty live view of the routing log (status, latency, memories)
+  skills             Install/uninstall/list companion skills (/wrap /curate /relay)
   version            Print version
   help               Show this message
 
@@ -230,6 +268,8 @@ init OPTIONS
   --bin <name>       command written into settings.json (default: memhook)
   --settings <path>  settings file to patch (default: ~/.claude/settings.json)
   --no-catalog       skip the initial catalog build
+  --skills           install companion skills (default: ask / yes in --yes mode)
+  --no-skills        skip installing companion skills
   --dry-run          print the plan, write nothing
   -y, --yes          non-interactive (accept defaults / flags)
 
@@ -245,6 +285,14 @@ tail OPTIONS
   --status <a,b>     only show these statuses (e.g. ok,cache_hit)
   --file <path>      log file to read (default: $MEMHOOK_LOG_PATH)
 
+skills SUBCOMMANDS
+  install [names…]   copy /wrap /curate /relay into ~/.claude/skills (default: all)
+  uninstall [names…] remove the bundled companion skills (backs up first)
+  list               show each skill's install status
+  --force            overwrite a skill that differs from shipped (backs up first)
+  --dry-run          print the plan, write nothing
+  -y, --yes          non-interactive (accept defaults)
+
 ENV VARS
   MEMHOOK_ENABLED                 toggle (default: true)
   MEMHOOK_PROVIDER                anthropic | openai | ollama (default: anthropic)
@@ -258,6 +306,10 @@ ENV VARS
   MEMHOOK_TIMEOUT_MS              request timeout (default: 8000; ollama: 30000)
   MEMHOOK_DISABLE_CACHE=true      skip local LRU cache
   MEMHOOK_DISABLE_PREFILTER=true  skip trivial-prompt skip
+  MEMHOOK_CURATE_NUDGE            /curate-nudge toggle (default: true)
+  MEMHOOK_CURATE_NUDGE_TOKENS     catalog-token threshold to nudge (default: 15000)
+  MEMHOOK_CURATE_NUDGE_FILES      memory-file-count threshold to nudge (default: 250)
+  MEMHOOK_CURATE_NUDGE_COOLDOWN_DAYS  min days between nudges (default: 7)
   NO_COLOR / MEMHOOK_NO_COLOR     disable colour in init/tail output
   MEMHOOK_DEBUG=true              print errors to stderr (default: silent fail-soft)
 

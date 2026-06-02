@@ -8,7 +8,7 @@ updated to clarify the support window for previous minors.
 
 | Version | Supported               |
 | ------- | ----------------------- |
-| `0.2.x` | ✅ active               |
+| `0.4.x` | ✅ active               |
 | older   | ❌ no longer maintained |
 
 ## Reporting a vulnerability
@@ -52,6 +52,10 @@ security-sensitive include:
 - `memhook init` / `memhook uninstall` modify `~/.claude/settings.json` only
   on explicit invocation. They back the file up first, never alter unrelated
   hooks or keys, and refuse to overwrite a file that isn't valid JSON.
+- `memhook skills install` / `uninstall` write only the bundled companion
+  skills under `~/.claude/skills/<name>/`, only on explicit invocation. They
+  never overwrite a skill you have edited without `--force` (and back it up
+  first), and only remove the files memhook ships.
 - Behaviour observed only when the user has explicitly disabled the
   fail-soft path (e.g. forced `set -e` in a custom hook wrapper).
 
