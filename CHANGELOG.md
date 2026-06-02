@@ -5,6 +5,13 @@ All notable changes to memhook are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2](https://github.com/utilia-ai-wox/memhook/compare/v0.2.1...v0.2.2) (2026-06-02)
+
+
+### Bug Fixes
+
+* **ci:** use npm install in publish job (repo ships no lockfile) ([#25](https://github.com/utilia-ai-wox/memhook/issues/25)) ([b12f873](https://github.com/utilia-ai-wox/memhook/commit/b12f873c2a83c9656134910a2971117687992f1e))
+
 ## [0.2.1](https://github.com/utilia-ai-wox/memhook/compare/v0.2.0...v0.2.1) (2026-06-02)
 
 
