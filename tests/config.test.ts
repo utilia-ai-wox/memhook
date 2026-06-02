@@ -138,4 +138,20 @@ describe("loadConfig precedence (env > yaml > defaults)", () => {
       false,
     );
   });
+
+  it("resurfaceHostLoaded defaults off, resolves env > yaml > default", () => {
+    // Default: off (the clean public behaviour — host-autoloaded rules omitted).
+    expect(loadConfig({ MEMHOOK_CONFIG: ABSENT }).resurfaceHostLoaded).toBe(false);
+    // YAML opt-in.
+    const p = writeYaml("resurfaceHostLoaded: true\n");
+    expect(loadConfig({ MEMHOOK_CONFIG: p }).resurfaceHostLoaded).toBe(true);
+    // Env wins over yaml (and honours the boolean vocabulary).
+    expect(
+      loadConfig({ MEMHOOK_CONFIG: p, MEMHOOK_RESURFACE_HOST_LOADED: "off" }).resurfaceHostLoaded,
+    ).toBe(false);
+    expect(
+      loadConfig({ MEMHOOK_CONFIG: ABSENT, MEMHOOK_RESURFACE_HOST_LOADED: "1" })
+        .resurfaceHostLoaded,
+    ).toBe(true);
+  });
 });

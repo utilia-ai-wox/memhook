@@ -49,19 +49,33 @@ describe("buildCatalog", () => {
 
   afterEach(() => rmSync(root, { recursive: true, force: true }));
 
-  function build(globalDir = globalRulesDir): string {
-    const res = buildCatalog({ cwd, projectsRoot, globalRulesDir: globalDir, outputPath });
+  function build(globalDir = globalRulesDir, resurfaceHostLoaded = false): string {
+    const res = buildCatalog({
+      cwd,
+      projectsRoot,
+      globalRulesDir: globalDir,
+      outputPath,
+      resurfaceHostLoaded,
+    });
     expect(res.lines).toBeGreaterThan(0);
     expect(res.bytes).toBeGreaterThan(0);
     return readFileSync(outputPath, "utf8");
   }
 
-  it("emits all four sections with the right headers", () => {
-    const out = build();
+  it("emits all four sections with the right headers (resurfaceHostLoaded)", () => {
+    const out = build(globalRulesDir, true);
     expect(out).toContain("=== MEMORY FEEDBACKS ===");
     expect(out).toContain("=== MEMORY PROJECTS ===");
     expect(out).toContain("=== GLOBAL RULES ===");
     expect(out).toContain(`=== PROJECT RULES (${basename(cwd)}) ===`);
+  });
+
+  it("omits the host-autoloaded rule sections by default (no double-injection)", () => {
+    const out = build(); // default resurfaceHostLoaded === false
+    expect(out).toContain("=== MEMORY FEEDBACKS ===");
+    expect(out).toContain("=== MEMORY PROJECTS ===");
+    expect(out).not.toContain("=== GLOBAL RULES ===");
+    expect(out).not.toContain("=== PROJECT RULES");
   });
 
   it("lists non-CWD zones as bare basenames (title-only, no description)", () => {
@@ -71,14 +85,14 @@ describe("buildCatalog", () => {
   });
 
   it("derives a rule description from frontmatter, falling back to the first H1", () => {
-    const out = build();
+    const out = build(globalRulesDir, true);
     expect(out).toContain("rule-fm.md: a global rule"); // frontmatter description
     expect(out).toContain("rule-h1.md: H1 fallback title"); // H1 fallback (no frontmatter)
   });
 
   it("emits a '(directory not found)' line for a missing rules dir instead of throwing", () => {
     const missing = join(root, "does-not-exist");
-    const out = build(missing);
+    const out = build(missing, true);
     expect(out).toContain(`(directory not found: ${missing})`);
   });
 

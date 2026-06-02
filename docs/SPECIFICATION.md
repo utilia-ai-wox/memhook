@@ -380,8 +380,17 @@ export async function route(
 Builds `~/.claude/cache/memory-catalog.txt` from:
 
 - `~/.claude/projects/*/memory/{feedback,project}_*.md` — all zones
-- `~/.claude/rules/*.md` — global rules
-- `<cwd>/.claude/rules/*.md` — project rules
+- `~/.claude/rules/*.md` — global rules _(host-autoloaded; see below)_
+- `<cwd>/.claude/rules/*.md` — project rules _(host-autoloaded; see below)_
+
+**Host-autoloaded zones (`resurfaceHostLoaded`, D30)**: Claude Code loads
+`~/.claude/rules/*.md` and `<cwd>/.claude/rules/*.md` in full at launch. By
+**default (`resurfaceHostLoaded` off)** the catalog **omits** these two rule
+zones, so the router never re-injects what the host already loaded (measured
+double-injection on ~20 % of injecting prompts; see `docs/private`). The memory
+zones (`feedback_*/project_*`) — which the host does **not** auto-load — are
+always catalogued. Set `MEMHOOK_RESURFACE_HOST_LOADED=true` to include the rule
+zones again (positional re-surfacing for long sessions / no-drift projects).
 
 **Title-only reduction**: zones other than the current CWD are listed
 with **basename only** (no description). Reduces catalog size ~50 % on
@@ -717,34 +726,35 @@ are **per-provider** (e.g. Ollama timeout 30000, OpenAI model gpt-4o-mini);
 the table below shows the Anthropic-default values. Sensible defaults work
 for most users.
 
-| Variable                             | Default                                   | Type   | Purpose                                                         |
-| ------------------------------------ | ----------------------------------------- | ------ | --------------------------------------------------------------- |
-| `MEMHOOK_ENABLED`                    | `true`                                    | bool   | Master toggle.                                                  |
-| `MEMHOOK_PROVIDER`                   | `anthropic`                               | enum   | Provider: `anthropic` / `openai` / `ollama`.                    |
-| `MEMHOOK_MODEL`                      | `claude-haiku-4-5`                        | string | Provider model id (per-provider default).                       |
-| `MEMHOOK_API_KEY_ENV`                | `ANTHROPIC_API_KEY`                       | string | Name of env var holding the API key.                            |
-| `MEMHOOK_BASE_URL`                   | `https://api.anthropic.com/v1/messages`   | string | Provider endpoint (per-provider default).                       |
-| `MEMHOOK_CONFIG`                     | `~/.config/memhook/config.yaml`           | path   | Optional YAML config file path.                                 |
-| `MEMHOOK_MAX_FILES`                  | `5`                                       | int    | Hard cap on number of files injected.                           |
-| `MEMHOOK_MAX_ADDITIONAL_CHARS`       | `9500`                                    | int    | Soft cap on injection size (Claude Code stdout cap = 10 000).   |
-| `MEMHOOK_MAX_OUTPUT_TOKENS`          | `200`                                     | int    | Provider's `max_tokens`.                                        |
-| `MEMHOOK_TIMEOUT_MS`                 | `8000`                                    | int    | Provider call timeout.                                          |
-| `MEMHOOK_DISABLE_CACHE`              | `false`                                   | bool   | Skip the local LRU cache.                                       |
-| `MEMHOOK_DISABLE_PREFILTER`          | `false`                                   | bool   | Skip the trivial-prompt filter.                                 |
-| `MEMHOOK_CACHE_TTL_MIN`              | `60`                                      | int    | Cache freshness in minutes.                                     |
-| `MEMHOOK_CACHE_EVICT_DAYS`           | `7`                                       | int    | Evict cache entries older than N days.                          |
-| `MEMHOOK_CACHE_DIR`                  | `$HOME/.cache/memhook`                    | path   | Cache root.                                                     |
-| `MEMHOOK_CATALOG_PATH`               | `$HOME/.claude/cache/memory-catalog.txt`  | path   | Catalog file.                                                   |
-| `MEMHOOK_LOG_PATH`                   | `$HOME/.claude/logs/memhook.log`          | path   | JSONL log file.                                                 |
-| `MEMHOOK_TRIVIAL_FILE`               | `$HOME/.config/memhook/trivial-words.txt` | path   | User-editable trivial words.                                    |
-| `MEMHOOK_PROJECTS_ROOT`              | `$HOME/.claude/projects`                  | path   | Memory zones root (override for tests / sandbox).               |
-| `MEMHOOK_GLOBAL_RULES_DIR`           | `$HOME/.claude/rules`                     | path   | Global rules dir.                                               |
-| `MEMHOOK_CURATE_NUDGE`               | `true`                                    | bool   | Enable the `/curate` nudge (§26). Local-only; no outbound call. |
-| `MEMHOOK_CURATE_NUDGE_TOKENS`        | `15000`                                   | int    | Catalog-token estimate that triggers the nudge.                 |
-| `MEMHOOK_CURATE_NUDGE_FILES`         | `250`                                     | int    | Memory-file count that triggers the nudge.                      |
-| `MEMHOOK_CURATE_NUDGE_COOLDOWN_DAYS` | `7`                                       | int    | Minimum days between nudges.                                    |
-| `MEMHOOK_DEBUG`                      | `false`                                   | bool   | Print errors to stderr (default silent fail-soft).              |
-| `NO_COLOR` / `MEMHOOK_NO_COLOR`      | _(unset)_                                 | flag   | Disable colour in `init` / `tail`; `FORCE_COLOR` forces it on.  |
+| Variable                             | Default                                   | Type   | Purpose                                                                                                                                               |
+| ------------------------------------ | ----------------------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `MEMHOOK_ENABLED`                    | `true`                                    | bool   | Master toggle.                                                                                                                                        |
+| `MEMHOOK_PROVIDER`                   | `anthropic`                               | enum   | Provider: `anthropic` / `openai` / `ollama`.                                                                                                          |
+| `MEMHOOK_MODEL`                      | `claude-haiku-4-5`                        | string | Provider model id (per-provider default).                                                                                                             |
+| `MEMHOOK_API_KEY_ENV`                | `ANTHROPIC_API_KEY`                       | string | Name of env var holding the API key.                                                                                                                  |
+| `MEMHOOK_BASE_URL`                   | `https://api.anthropic.com/v1/messages`   | string | Provider endpoint (per-provider default).                                                                                                             |
+| `MEMHOOK_CONFIG`                     | `~/.config/memhook/config.yaml`           | path   | Optional YAML config file path.                                                                                                                       |
+| `MEMHOOK_MAX_FILES`                  | `5`                                       | int    | Hard cap on number of files injected.                                                                                                                 |
+| `MEMHOOK_MAX_ADDITIONAL_CHARS`       | `9500`                                    | int    | Soft cap on injection size (Claude Code stdout cap = 10 000).                                                                                         |
+| `MEMHOOK_MAX_OUTPUT_TOKENS`          | `200`                                     | int    | Provider's `max_tokens`.                                                                                                                              |
+| `MEMHOOK_TIMEOUT_MS`                 | `8000`                                    | int    | Provider call timeout.                                                                                                                                |
+| `MEMHOOK_DISABLE_CACHE`              | `false`                                   | bool   | Skip the local LRU cache.                                                                                                                             |
+| `MEMHOOK_DISABLE_PREFILTER`          | `false`                                   | bool   | Skip the trivial-prompt filter.                                                                                                                       |
+| `MEMHOOK_CACHE_TTL_MIN`              | `60`                                      | int    | Cache freshness in minutes.                                                                                                                           |
+| `MEMHOOK_CACHE_EVICT_DAYS`           | `7`                                       | int    | Evict cache entries older than N days.                                                                                                                |
+| `MEMHOOK_CACHE_DIR`                  | `$HOME/.cache/memhook`                    | path   | Cache root.                                                                                                                                           |
+| `MEMHOOK_CATALOG_PATH`               | `$HOME/.claude/cache/memory-catalog.txt`  | path   | Catalog file.                                                                                                                                         |
+| `MEMHOOK_LOG_PATH`                   | `$HOME/.claude/logs/memhook.log`          | path   | JSONL log file.                                                                                                                                       |
+| `MEMHOOK_TRIVIAL_FILE`               | `$HOME/.config/memhook/trivial-words.txt` | path   | User-editable trivial words.                                                                                                                          |
+| `MEMHOOK_PROJECTS_ROOT`              | `$HOME/.claude/projects`                  | path   | Memory zones root (override for tests / sandbox).                                                                                                     |
+| `MEMHOOK_GLOBAL_RULES_DIR`           | `$HOME/.claude/rules`                     | path   | Global rules dir.                                                                                                                                     |
+| `MEMHOOK_RESURFACE_HOST_LOADED`      | `false`                                   | bool   | Route rules the host auto-loads at launch (§8.2, D30). Off = no double-injection; on = positional re-surfacing for long sessions / no-drift projects. |
+| `MEMHOOK_CURATE_NUDGE`               | `true`                                    | bool   | Enable the `/curate` nudge (§26). Local-only; no outbound call.                                                                                       |
+| `MEMHOOK_CURATE_NUDGE_TOKENS`        | `15000`                                   | int    | Catalog-token estimate that triggers the nudge.                                                                                                       |
+| `MEMHOOK_CURATE_NUDGE_FILES`         | `250`                                     | int    | Memory-file count that triggers the nudge.                                                                                                            |
+| `MEMHOOK_CURATE_NUDGE_COOLDOWN_DAYS` | `7`                                       | int    | Minimum days between nudges.                                                                                                                          |
+| `MEMHOOK_DEBUG`                      | `false`                                   | bool   | Print errors to stderr (default silent fail-soft).                                                                                                    |
+| `NO_COLOR` / `MEMHOOK_NO_COLOR`      | _(unset)_                                 | flag   | Disable colour in `init` / `tail`; `FORCE_COLOR` forces it on.                                                                                        |
 
 ---
 
@@ -1008,6 +1018,7 @@ to this section are append-only — past decisions don't get rewritten.
 | D27 | 2026-06-02 | `memhook skills` copy plan is pure + unit-tested; non-clobbering                                       | Same discipline as D22 (`install.ts`): the plan (`src/skills.ts`) is a pure transform — idempotent (skips identical), refuses to overwrite a user-edited skill without `--force`, backs up before overwriting; `src/skillsCmd.ts` is the I/O shell. Skills are NOT on the hook path, so they may exit non-zero (§9 boundary).                                                                                                                                                                                                                                            |
 | D28 | 2026-06-02 | Pinned third-party GitHub Actions to commit SHAs                                                       | Tags are mutable; a full commit SHA is the only immutable release reference (GitHub "Using third-party actions" hardening guidance). The `github-actions` Dependabot group keeps the SHAs + version comments current.                                                                                                                                                                                                                                                                                                                                                    |
 | D29 | 2026-06-02 | Stopped publishing sourcemaps in the npm tarball                                                       | `.js.map` / `.d.ts.map` carry no `sourcesContent` and `src/` is not shipped, so they were dead weight (~35% of the tarball) on an every-prompt hook. Dropped `sourceMap` / `declarationMap` from `tsconfig.json`.                                                                                                                                                                                                                                                                                                                                                        |
+| D30 | 2026-06-02 | Host-autoloaded rule zones omitted from the catalog by default (`resurfaceHostLoaded`, off)            | Claude Code loads `~/.claude/rules/*.md` + `<cwd>/.claude/rules/*.md` in full at launch, so cataloguing them let the router re-inject what the host already had. Measured: ~20 % of injecting prompts (≥11.5 % confirmed) re-injected an already-autoloaded rule across a 4.8k-prompt corpus. Default now omits those two zones (memhook routes only the not-autoloaded `feedback_*/project_*` memory). `MEMHOOK_RESURFACE_HOST_LOADED=true` re-includes them for positional re-surfacing (long sessions / no-drift projects). Catalog-only change; router untouched.    |
 
 ---
 
