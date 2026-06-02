@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { join } from "node:path";
 import {
   expandHome,
   globToRegExp,
@@ -10,7 +11,8 @@ import {
 describe("expandHome", () => {
   it("expands ~ and ~/ against home, leaves other paths alone", () => {
     expect(expandHome("~", "/home/u")).toBe("/home/u");
-    expect(expandHome("~/notes", "/home/u")).toBe("/home/u/notes");
+    // join() so the separator matches the platform (backslash on Windows).
+    expect(expandHome("~/notes", "/home/u")).toBe(join("/home/u", "notes"));
     expect(expandHome("/abs/path", "/home/u")).toBe("/abs/path");
     expect(expandHome("rel/path", "/home/u")).toBe("rel/path");
   });
@@ -50,7 +52,7 @@ describe("resolveCustomSources", () => {
   it("resolves a full entry and applies defaults (glob *.md, scope memory, hostAutoLoaded false)", () => {
     const out = resolveCustomSources([{ dir: "~/notes" }], home);
     expect(out).toEqual([
-      { dir: "/home/u/notes", glob: "*.md", scope: "memory", hostAutoLoaded: false },
+      { dir: join(home, "notes"), glob: "*.md", scope: "memory", hostAutoLoaded: false },
     ]);
   });
 
