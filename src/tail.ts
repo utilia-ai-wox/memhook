@@ -307,9 +307,14 @@ export async function runTail(
     if (passesFilter(row, filter)) out(formatRow(row, ansi, columns));
   };
 
-  // Initial tail of the existing log.
+  // Initial tail of the existing log. Capture the follow offset from the SAME
+  // buffer rendered here, so a line appended between this read and the offset
+  // snapshot can't be skipped in the live view.
+  let offset = 0;
   if (existsSync(logPath)) {
-    for (const line of tailLines(readFileSync(logPath, "utf8"), opts.lines)) render(line);
+    const initial = readFileSync(logPath, "utf8");
+    for (const line of tailLines(initial, opts.lines)) render(line);
+    offset = Buffer.byteLength(initial, "utf8");
   }
 
   if (opts.noFollow) {
@@ -327,7 +332,6 @@ export async function runTail(
   });
   if (!existsSync(logPath)) out(ansi.dim("  waiting for the first prompt…"));
 
-  let offset = existsSync(logPath) ? statSync(logPath).size : 0;
   let buffer = "";
   while (!stop) {
     await Promise.race([sleep(POLL_MS), stopped]);

@@ -298,15 +298,25 @@ function parseBasenames(raw: string): string[] | null {
 
 function extractJsonArray(text: string): string[] | null {
   const flat = text.replace(/\n/g, " ");
-  const match = flat.match(/\[[^\]]*\]/);
-  if (!match) return null;
-  try {
-    const parsed = JSON.parse(match[0]);
-    if (!Array.isArray(parsed)) return null;
-    return parsed.filter((x): x is string => typeof x === "string");
-  } catch {
-    return null;
+  const matches = flat.match(/\[[^\]]*\]/g);
+  if (!matches) return null;
+  // A compliant response is a single bare array, but a model may wrap it in
+  // prose containing a decoy `[...]`. Scan every bracketed candidate and prefer
+  // the LAST one that yields usable string basenames; keep an empty array only
+  // as a fallback when no non-empty array is found, else null.
+  let result: string[] | null = null;
+  for (const candidate of matches) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(candidate);
+    } catch {
+      continue;
+    }
+    if (!Array.isArray(parsed)) continue;
+    const strings = parsed.filter((x): x is string => typeof x === "string");
+    if (strings.length > 0 || result === null) result = strings;
   }
+  return result;
 }
 
 interface ReadSelectedResult {
@@ -327,10 +337,14 @@ function readSelected(basenames: string[], cwd: string, config: MemhookConfig): 
   let additional = "";
   let injected = 0;
   const seen: string[] = [];
+  const seenNames = new Set<string>();
 
   for (const name of basenames) {
     if (injected >= config.selection.maxFiles) break;
     if (!SAFE_BASENAME_RE.test(name)) continue;
+    // De-dup: a basename the model repeats is injected once and uses one slot.
+    if (seenNames.has(name)) continue;
+    seenNames.add(name);
     seen.push(name);
 
     for (const dir of dirs) {

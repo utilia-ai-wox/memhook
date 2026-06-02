@@ -19,10 +19,6 @@ files for each prompt and injects them as `additionalContext`.
 
 </div>
 
-<!-- TODO(demo): record an asciinema of `tail -f ~/.claude/logs/memhook.log`
-     while prompting Claude Code — it shows the router picking files live.
-     Embed: [![asciicast](https://asciinema.org/a/XXXXX.svg)](https://asciinema.org/a/XXXXX) -->
-
 ## ✨ Features
 
 - 🎯 **Relevant-only injection** — a cheap model picks the 0–5 memory files that matter for _this_ prompt.
@@ -276,7 +272,7 @@ model**, just without injected memories for that turn.
 - `v0.2` ✅ — YAML config file, OpenAI provider, Ollama local provider (published on npm)
 - `v0.3` ✅ — `memhook init` / `memhook uninstall` setup wizard + zero-dep live monitor (`memhook tail`)
 - `v0.4` ✅ — Companion skills (`/wrap`, `/curate`, `/relay`) + `memhook skills` installer + `/curate` nudge
-- `v1.0` — API frozen, cross-platform validated, listed on awesome-lists
+- `v1.0` — API frozen, cross-platform validated, polished docs
 
 ## 🤝 Contributing
 

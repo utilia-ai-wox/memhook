@@ -14,6 +14,12 @@ export { LocalCache, type CacheKeyInput } from "./cache.js";
 export { PreFilter } from "./preFilter.js";
 export { MEMHOOK_VERSION } from "./version.js";
 export { createProvider } from "./providers/factory.js";
+
+// ── Internal building blocks (NOT part of the semver-stable surface) ─────────
+// The install/init/skills/tail/ansi re-exports below back the CLI and tests.
+// They are exposed for power users but may change between 0.x minor releases;
+// the stable embedding API is the core above (route, loadConfig, buildCatalog,
+// LocalCache, PreFilter, MEMHOOK_VERSION) plus the provider exports.
 export {
   addHooks,
   removeHooks,
