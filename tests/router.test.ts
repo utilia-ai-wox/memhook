@@ -173,6 +173,23 @@ describe("router", () => {
     vi.unstubAllGlobals();
   });
 
+  it("injects a file from a YAML-declared custom source dir", async () => {
+    const customDir = join(root, "custom-notes");
+    mkdirSync(customDir, { recursive: true });
+    writeFileSync(join(customDir, "note_custom.md"), "Custom note content Z");
+    const cfgPath = join(root, "custom-src.yaml");
+    writeFileSync(cfgPath, `customSources:\n  - dir: ${customDir}\n    glob: "*.md"\n`);
+    vi.stubGlobal("fetch", mockFetch('["note_custom.md"]'));
+    const result = await route(JSON.stringify({ prompt: "custom-src", cwd: root }), {
+      ...env,
+      MEMHOOK_CONFIG: cfgPath,
+    });
+    expect(result.hookSpecificOutput.additionalContext).toContain("Custom note content Z");
+    expect(result.hookSpecificOutput.additionalContext).toContain("note_custom.md");
+    expect(readFileSync(logPath, "utf8")).toContain('"status":"ok"');
+    vi.unstubAllGlobals();
+  });
+
   it("returns empty + status provider_init_failed when construction throws", async () => {
     // A YAML config with an empty model forces the Anthropic constructor to
     // throw; the router must catch it and fail-soft rather than crash the hook.

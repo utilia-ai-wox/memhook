@@ -111,4 +111,40 @@ describe("buildCatalog", () => {
   it.skipIf(isWindows)("does not list MEMORY.md as a memory entry", () => {
     expect(build()).not.toContain("MEMORY.md");
   });
+
+  it("catalogs a custom source dir (glob-matched .md only)", () => {
+    const custom = join(root, "notes");
+    mkdirSync(custom, { recursive: true });
+    writeFileSync(join(custom, "note-a.md"), "---\ndescription: note A desc\n---\n");
+    writeFileSync(join(custom, "skip.txt"), "not markdown\n");
+    buildCatalog({
+      cwd,
+      projectsRoot,
+      globalRulesDir,
+      outputPath,
+      customSources: [{ dir: custom, glob: "*.md", scope: "memory", hostAutoLoaded: false }],
+    });
+    const out = readFileSync(outputPath, "utf8");
+    expect(out).toContain("=== CUSTOM SOURCES ===");
+    expect(out).toContain(`--- ${custom} ---`);
+    expect(out).toContain("note-a.md: note A desc");
+    expect(out).not.toContain("skip.txt");
+  });
+
+  it("skips a host-autoloaded custom source unless resurfaceHostLoaded", () => {
+    const custom = join(root, "host-notes");
+    mkdirSync(custom, { recursive: true });
+    writeFileSync(join(custom, "h.md"), "# host note\n");
+    const opts = {
+      cwd,
+      projectsRoot,
+      globalRulesDir,
+      outputPath,
+      customSources: [{ dir: custom, glob: "*.md", scope: "rules" as const, hostAutoLoaded: true }],
+    };
+    buildCatalog(opts);
+    expect(readFileSync(outputPath, "utf8")).not.toContain("=== CUSTOM SOURCES ===");
+    buildCatalog({ ...opts, resurfaceHostLoaded: true });
+    expect(readFileSync(outputPath, "utf8")).toContain("h.md");
+  });
 });

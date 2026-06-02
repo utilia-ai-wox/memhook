@@ -52,6 +52,8 @@ export interface RawConfigFile {
     globalRulesDir?: string;
   };
   resurfaceHostLoaded?: boolean;
+  /** Extra `.md` source dirs; validated + narrowed by `resolveCustomSources`. */
+  customSources?: unknown;
   logging?: {
     jsonlPath?: string;
   };

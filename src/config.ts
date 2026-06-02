@@ -15,6 +15,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { loadYamlConfig } from "./configFile.js";
+import { resolveCustomSources, type CustomSource } from "./sources.js";
 import { MEMHOOK_VERSION } from "./version.js";
 
 export type ProviderType = "anthropic" | "openai" | "ollama";
@@ -76,6 +77,13 @@ export interface MemhookConfig {
    * is a deliberate guard-rail.
    */
   resurfaceHostLoaded: boolean;
+  /**
+   * Extra memory sources beyond the built-in `~/.claude` zones — directories of
+   * `.md` files (any naming, via a glob) that memhook catalogs + routes like its
+   * own zones. This is how memhook cables onto memory that already exists in a
+   * project. YAML-only (`customSources:`), default empty. See `src/sources.ts`.
+   */
+  customSources: CustomSource[];
   logging: {
     jsonlPath: string;
   };
@@ -275,6 +283,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): MemhookConfig 
       ),
     ],
     resurfaceHostLoaded: bool("MEMHOOK_RESURFACE_HOST_LOADED", yaml?.resurfaceHostLoaded, false),
+    customSources: resolveCustomSources(yaml?.customSources, home),
     logging: {
       jsonlPath: str(
         "MEMHOOK_LOG_PATH",
