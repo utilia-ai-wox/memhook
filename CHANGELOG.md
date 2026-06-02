@@ -5,6 +5,32 @@ All notable changes to memhook are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0](https://github.com/utilia-ai-wox/memhook/compare/v0.1.0-preview.0...v0.2.0) (2026-06-02)
+
+
+### Features
+
+* **providers:** add multi-provider support and optional YAML config ([97920e4](https://github.com/utilia-ai-wox/memhook/commit/97920e4dc5680dd403336b0a9c44a021fe193de3))
+* **providers:** add OpenAI and Ollama providers + optional YAML config ([8bc5555](https://github.com/utilia-ai-wox/memhook/commit/8bc5555ad73130267984b0d18660a630fdb409d3))
+
+
+### Bug Fixes
+
+* **config:** clamp numeric knobs and widen boolean env vocabulary ([0ad7c6f](https://github.com/utilia-ai-wox/memhook/commit/0ad7c6f13ada7c33933fd8ef70fdf20d35e1f882))
+* **config:** clamp numeric knobs and widen boolean env vocabulary ([ea386c0](https://github.com/utilia-ai-wox/memhook/commit/ea386c0247fc8746908635d0362cff3f01b34be2))
+* point package exports at the compiled dist/src layout ([970ee71](https://github.com/utilia-ai-wox/memhook/commit/970ee711685baaaf63967afb8c5d696a9688486b))
+* point package exports at the compiled dist/src layout ([57e1ff4](https://github.com/utilia-ai-wox/memhook/commit/57e1ff469e4eeb25cbca568f9a390cac690c759a))
+
+
+### Documentation
+
+* document v0.2 multi-provider and YAML config ([63e6d1b](https://github.com/utilia-ai-wox/memhook/commit/63e6d1b709f2f405b1f18c18958fe28979d57702))
+
+
+### Chore
+
+* graduate release line to clean 0.2.0 ([f0a07e5](https://github.com/utilia-ai-wox/memhook/commit/f0a07e51fe5792df4efd7af9d59452d97603b675))
+
 ## [Unreleased]
 
 ### Added
