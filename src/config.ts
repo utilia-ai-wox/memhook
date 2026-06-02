@@ -138,18 +138,31 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): MemhookConfig 
     envVal(envKey) ?? (typeof yamlVal === "string" ? yamlVal : undefined) ?? def;
   const strOpt = (envKey: string, yamlVal: unknown, def: string | undefined): string | undefined =>
     envVal(envKey) ?? (typeof yamlVal === "string" ? yamlVal : undefined) ?? def;
+  // Every numeric knob is a positive-integer count or duration, so a candidate
+  // is only accepted if it is a finite integer >= 1. This rejects degenerate
+  // values (negative caps, a 0ms timeout that aborts every request, NaN) by
+  // falling through to yaml/default instead of passing them on; fractions are
+  // floored. Defaults are trusted constants and pass through unchecked.
+  const posInt = (n: number): number | undefined =>
+    Number.isFinite(n) && n >= 1 ? Math.floor(n) : undefined;
   const num = (envKey: string, yamlVal: unknown, def: number): number => {
     const v = envVal(envKey);
     if (v !== undefined) {
-      const n = Number(v);
-      if (Number.isFinite(n)) return n;
+      const fromEnv = posInt(Number(v));
+      if (fromEnv !== undefined) return fromEnv;
     }
-    return typeof yamlVal === "number" && Number.isFinite(yamlVal) ? yamlVal : def;
+    const fromYaml = typeof yamlVal === "number" ? posInt(yamlVal) : undefined;
+    return fromYaml ?? def;
+  };
+  // Accepted truthy tokens, case-insensitive: true / 1 / yes / on.
+  const truthy = (v: string): boolean => {
+    const t = v.trim().toLowerCase();
+    return t === "true" || t === "1" || t === "yes" || t === "on";
   };
   // Positive boolean (env wins, then yaml, then default).
   const bool = (envKey: string, yamlVal: unknown, def: boolean): boolean => {
     const v = envVal(envKey);
-    if (v !== undefined) return v === "true" || v === "1";
+    if (v !== undefined) return truthy(v);
     return typeof yamlVal === "boolean" ? yamlVal : def;
   };
   // Inverted `MEMHOOK_DISABLE_*` env flag mapped onto a positive enabled value.
@@ -159,7 +172,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): MemhookConfig 
     def: boolean,
   ): boolean => {
     const v = envVal(disableEnvKey);
-    if (v !== undefined) return !(v === "true" || v === "1");
+    if (v !== undefined) return !truthy(v);
     return typeof yamlEnabled === "boolean" ? yamlEnabled : def;
   };
 

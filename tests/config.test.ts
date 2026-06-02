@@ -107,4 +107,35 @@ describe("loadConfig precedence (env > yaml > defaults)", () => {
       "claude-haiku-4-5",
     );
   });
+
+  it("rejects degenerate numeric values (negative, zero, NaN) -> default", () => {
+    // 0ms timeout would abort every request; negative caps break comparisons.
+    expect(
+      loadConfig({ MEMHOOK_CONFIG: ABSENT, MEMHOOK_TIMEOUT_MS: "0" }).selection.curlTimeoutMs,
+    ).toBe(8000);
+    expect(loadConfig({ MEMHOOK_CONFIG: ABSENT, MEMHOOK_MAX_FILES: "-1" }).selection.maxFiles).toBe(
+      5,
+    );
+    expect(
+      loadConfig({ MEMHOOK_CONFIG: ABSENT, MEMHOOK_MAX_FILES: "abc" }).selection.maxFiles,
+    ).toBe(5);
+    const p = writeYaml("selection:\n  maxFiles: 0\n");
+    expect(loadConfig({ MEMHOOK_CONFIG: p }).selection.maxFiles).toBe(5);
+  });
+
+  it("floors a fractional numeric value", () => {
+    expect(
+      loadConfig({ MEMHOOK_CONFIG: ABSENT, MEMHOOK_MAX_FILES: "2.9" }).selection.maxFiles,
+    ).toBe(2);
+  });
+
+  it("accepts a wider, case-insensitive boolean vocabulary (true/1/yes/on)", () => {
+    expect(loadConfig({ MEMHOOK_CONFIG: ABSENT, MEMHOOK_ENABLED: "yes" }).enabled).toBe(true);
+    expect(loadConfig({ MEMHOOK_CONFIG: ABSENT, MEMHOOK_ENABLED: "TRUE" }).enabled).toBe(true);
+    expect(loadConfig({ MEMHOOK_CONFIG: ABSENT, MEMHOOK_ENABLED: "off" }).enabled).toBe(false);
+    // DISABLE flags honour the same vocabulary.
+    expect(loadConfig({ MEMHOOK_CONFIG: ABSENT, MEMHOOK_DISABLE_CACHE: "on" }).cache.enabled).toBe(
+      false,
+    );
+  });
 });
