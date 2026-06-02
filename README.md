@@ -82,19 +82,64 @@ npm link
 
 ## Configuration
 
-All knobs are env vars (no config file in `v0.1`). Sensible defaults work
-for most users.
+Every knob is an env var, and (since `v0.2`) optionally a YAML file.
+Precedence per key is **env var > YAML file > built-in default**, so an
+env-var-only setup behaves exactly as before. Sensible defaults work for most
+users.
 
-| Variable                         | Default             | Purpose                                |
-| -------------------------------- | ------------------- | -------------------------------------- |
-| `MEMHOOK_ENABLED`                | `true`              | Master toggle                          |
-| `MEMHOOK_MODEL`                  | `claude-haiku-4-5`  | Provider model id                      |
-| `MEMHOOK_API_KEY_ENV`            | `ANTHROPIC_API_KEY` | Name of env var holding the API key    |
-| `MEMHOOK_MAX_FILES`              | `5`                 | Hard cap on injected files             |
-| `MEMHOOK_MAX_ADDITIONAL_CHARS`   | `9500`              | Soft cap on injected chars (≈2.4k tok) |
-| `MEMHOOK_DISABLE_CACHE=true`     | _(off)_             | Skip local LRU cache                   |
-| `MEMHOOK_DISABLE_PREFILTER=true` | _(off)_             | Skip trivial-prompt skip               |
-| `MEMHOOK_DEBUG=true`             | _(off)_             | Print errors to stderr                 |
+| Variable                         | Default                         | Purpose                                |
+| -------------------------------- | ------------------------------- | -------------------------------------- |
+| `MEMHOOK_ENABLED`                | `true`                          | Master toggle                          |
+| `MEMHOOK_PROVIDER`               | `anthropic`                     | `anthropic` \| `openai` \| `ollama`    |
+| `MEMHOOK_MODEL`                  | per-provider                    | Model id (provider default if unset)   |
+| `MEMHOOK_API_KEY_ENV`            | per-provider                    | Name of env var holding the API key    |
+| `MEMHOOK_BASE_URL`               | per-provider                    | Override the provider API endpoint     |
+| `MEMHOOK_CONFIG`                 | `~/.config/memhook/config.yaml` | Path to the optional YAML config file  |
+| `MEMHOOK_MAX_FILES`              | `5`                             | Hard cap on injected files             |
+| `MEMHOOK_MAX_ADDITIONAL_CHARS`   | `9500`                          | Soft cap on injected chars (≈2.4k tok) |
+| `MEMHOOK_MAX_OUTPUT_TOKENS`      | `200`                           | Model output cap for the selection     |
+| `MEMHOOK_TIMEOUT_MS`             | `8000` (`30000` for ollama)     | Per-request timeout                    |
+| `MEMHOOK_DISABLE_CACHE=true`     | _(off)_                         | Skip local LRU cache                   |
+| `MEMHOOK_DISABLE_PREFILTER=true` | _(off)_                         | Skip trivial-prompt skip               |
+| `MEMHOOK_DEBUG=true`             | _(off)_                         | Print errors to stderr                 |
+
+### YAML config (optional)
+
+memhook works with **no config file at all**. If you prefer YAML, copy
+[`config.example.yaml`](config.example.yaml) to `~/.config/memhook/config.yaml`
+(or point `MEMHOOK_CONFIG` at it). A missing or malformed file is ignored
+silently — memhook falls back to env vars and defaults, never blocking your
+prompt.
+
+```yaml
+provider:
+  type: openai
+  # model + apiKeyEnv default to gpt-4o-mini + OPENAI_API_KEY
+selection:
+  maxFiles: 5
+```
+
+## Providers
+
+The default provider is **Anthropic** — with no `MEMHOOK_PROVIDER` set, the
+only outbound call memhook ever makes is to `api.anthropic.com`, using your own
+key. Selecting another provider is **opt-in** and changes which endpoint is
+contacted. memhook never phones home and has no telemetry; "provider" means the
+LLM endpoint _you_ choose to route through.
+
+| Provider  | `MEMHOOK_PROVIDER` | Default model      | API key             | Endpoint                                |
+| --------- | ------------------ | ------------------ | ------------------- | --------------------------------------- |
+| Anthropic | `anthropic`        | `claude-haiku-4-5` | `ANTHROPIC_API_KEY` | `api.anthropic.com`                     |
+| OpenAI    | `openai`           | `gpt-4o-mini`      | `OPENAI_API_KEY`    | `api.openai.com`                        |
+| Ollama    | `ollama`           | `llama3.1`         | _none_ (local)      | `http://localhost:11434` (configurable) |
+
+- **OpenAI** — set `MEMHOOK_PROVIDER=openai` and `OPENAI_API_KEY`. Uses the
+  Chat Completions API; the catalog rides as the leading system message so
+  OpenAI's automatic prompt caching can engage on a large catalog.
+- **Ollama** — set `MEMHOOK_PROVIDER=ollama` and make sure the model is pulled
+  (`ollama pull llama3.1`) with the daemon running. No API key required. Hits
+  the native `/api/chat` endpoint with `stream:false`; the timeout defaults to
+  30s to absorb cold model loads.
 
 ## Observability
 
@@ -125,18 +170,19 @@ jq -c 'select((.ts | fromdateiso8601) > (now - 7*86400)) | .status' \
 
 ## Status values
 
-| `status`          | Meaning                                           |
-| ----------------- | ------------------------------------------------- |
-| `ok`              | Files injected from a fresh Haiku selection       |
-| `cache_hit`       | Files injected from local LRU cache               |
-| `pre_filter_skip` | Trivial prompt, LLM call skipped                  |
-| `empty_selection` | Haiku returned `[]` (no memory needed)            |
-| `all_unfound`     | Haiku returned basenames that don't exist on disk |
-| `no_catalog`      | Catalog missing — run `memhook build-catalog`     |
-| `no_api_key`      | `ANTHROPIC_API_KEY` not set in env                |
-| `api_no_response` | Network error or timeout (8s)                     |
-| `api_no_content`  | API returned 200 but no text                      |
-| `parse_invalid`   | Response wasn't a valid JSON array                |
+| `status`               | Meaning                                               |
+| ---------------------- | ----------------------------------------------------- |
+| `ok`                   | Files injected from a fresh model selection           |
+| `cache_hit`            | Files injected from local LRU cache                   |
+| `pre_filter_skip`      | Trivial prompt, LLM call skipped                      |
+| `empty_selection`      | The model returned `[]` (no memory needed)            |
+| `all_unfound`          | The model returned basenames that don't exist on disk |
+| `no_catalog`           | Catalog missing — run `memhook build-catalog`         |
+| `no_api_key`           | API key env var not set (not needed for ollama)       |
+| `provider_init_failed` | Provider couldn't be constructed (bad config)         |
+| `api_no_response`      | Network error or timeout                              |
+| `api_no_content`       | API returned 200 but no text                          |
+| `parse_invalid`        | Response wasn't a valid JSON array                    |
 
 ## Fail-soft
 
@@ -147,7 +193,7 @@ model, just without injected memories for that turn.
 
 ## Roadmap
 
-- `v0.2` — YAML config file, OpenAI provider, Ollama local provider
+- `v0.2` ✅ — YAML config file, OpenAI provider, Ollama local provider
 - `v0.3` — TUI live monitor (`memhook tail`)
 - `v0.4` — Companion skills (`/wrap`, `/curate`, `/relay`)
 - `v0.5` — Auto-bootstrap (`memhook init` detects empty memory dirs)

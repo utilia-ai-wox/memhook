@@ -51,19 +51,28 @@ memhook run            # read hook JSON from stdin, emit additionalContext
 ## Layout
 
 ```
-src/        router · catalog · cache · preFilter · providers · config
+src/        router · catalog · cache · preFilter · providers · config · configFile · version
 bin/        CLI entrypoint (`memhook run|build-catalog|version`)
 tests/      vitest suites — colocated with src/ they cover
 dist/       tsc output (gitignored, built on publish)
 docs/       RUNNERS.md (self-hosted CI setup)
 ```
 
-## Non-goals (v0.1)
+## Non-goals (still firm in v0.2)
 
-- No YAML config file — env vars only.
-- No multi-provider — only Anthropic; OpenAI / Ollama deferred to v0.2.
-- No telemetry, no phone-home, no update check. The **only** outbound
-  call is `api.anthropic.com`, using the user's own API key.
+- No telemetry, no phone-home, no update check. By default the **only**
+  outbound call is `api.anthropic.com`, using the user's own API key.
+  Selecting `openai` or `ollama` is opt-in and changes the endpoint the user
+  chose to route through — it is never analytics or phone-home.
+
+## Shipped in v0.2
+
+- **YAML config file** — optional, opt-in (`$MEMHOOK_CONFIG` or
+  `~/.config/memhook/config.yaml`); precedence env > YAML > default. Parsed by
+  the `yaml` package (memhook's first runtime dependency, zero sub-deps).
+- **Multi-provider** — `MEMHOOK_PROVIDER` selects `anthropic` (default),
+  `openai`, or `ollama` (local). Built via `createProvider()` in
+  `src/providers/factory.ts`; all share `src/providers/http.ts`.
 
 ## Working on this repo
 
