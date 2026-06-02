@@ -15,7 +15,11 @@ coverage/
 package-lock.json
 bun.lock
 
-# Private zones — never commit
+# Private zones — never commit.
+# .claude/rules/ is gitignored too: project rules are auto-loaded by Claude
+# Code from disk (not git), so keeping them untracked makes them apply locally
+# without becoming public artifacts on this open-source repo.
+.claude/rules/
 .claude/private/
 .claude/settings.local.json
 docs/private/
