@@ -31,7 +31,7 @@ import { join, dirname, basename } from "node:path";
 import { LocalCache } from "./cache.js";
 import { loadConfig, type MemhookConfig } from "./config.js";
 import { PreFilter } from "./preFilter.js";
-import { AnthropicProvider } from "./providers/anthropic.js";
+import { createProvider } from "./providers/factory.js";
 
 const SAFE_BASENAME_RE = /^[A-Za-z0-9._-]+\.md$/;
 
@@ -98,8 +98,10 @@ export async function route(
     return EMPTY;
   }
 
-  const apiKey = env[config.provider.apiKeyEnv];
-  if (!apiKey) {
+  // Provider-aware key gate: local providers (Ollama) need no API key.
+  const needsKey = config.provider.type !== "ollama";
+  const apiKey = config.provider.apiKeyEnv ? env[config.provider.apiKeyEnv] : undefined;
+  if (needsKey && !apiKey) {
     logEntry(config, baseLog(input.prompt, "no_api_key"));
     return EMPTY;
   }
@@ -112,6 +114,7 @@ export async function route(
         catalogMtimeMs: catalogStat.mtimeMs,
         cwd,
         scriptVersion: config.scriptVersion,
+        provider: `${config.provider.type}:${config.provider.model}`,
       })
     : "";
 
@@ -127,7 +130,9 @@ export async function route(
 
   if (config.cache.enabled) {
     const hit = cache.get(cacheKey);
-    if (hit) {
+    // Only trust a cache entry that still parses to a string array; a corrupted
+    // entry is treated as a miss (we re-fetch) rather than killing the turn.
+    if (hit !== null && parseBasenames(hit) !== null) {
       selectedJson = hit;
       fromCache = true;
     }
@@ -136,21 +141,21 @@ export async function route(
   if (!fromCache) {
     const catalogContent = readFileSync(config.catalog.path, "utf8");
     const systemPrompt = buildSystemPrompt(catalogContent);
-    const provider = new AnthropicProvider({
-      apiKey,
-      model: config.provider.model,
-      ...(config.provider.baseUrl !== undefined && {
-        baseUrl: config.provider.baseUrl,
-      }),
-      betaHeaders: config.provider.betaHeaders,
-    });
+    // Provider construction can throw on bad config; the constructor `throw`s
+    // are reachable from the hook, so they MUST be caught here (fail-soft).
+    let provider;
+    try {
+      provider = createProvider(config, apiKey);
+    } catch {
+      logEntry(config, baseLog(input.prompt, "provider_init_failed"));
+      return EMPTY;
+    }
     let resp;
     try {
       resp = await provider.select({
         systemPrompt,
         userPrompt: input.prompt,
         maxOutputTokens: config.selection.maxOutputTokens,
-        cacheControlTtl: config.selection.cacheControlTtl,
         timeoutMs: config.selection.curlTimeoutMs,
       });
     } catch {
@@ -188,7 +193,10 @@ export async function route(
     }
   }
 
-  const basenames: string[] = JSON.parse(selectedJson);
+  // selectedJson is a validated cache entry or a fresh `JSON.stringify` of a
+  // string array, so this parse is safe by construction; `?? []` is a final
+  // fail-soft backstop that never lets a malformed value throw out of route().
+  const basenames = parseBasenames(selectedJson) ?? [];
   const { additional, injected, allBasenames } = readSelected(basenames, cwd, config);
 
   let status: string;
@@ -244,6 +252,17 @@ Format réponse : JSON array de basenames sur UNE SEULE LIGNE.
 Exemple correct : ["feedback_commit_without_asking.md", "crypto-standards.md"]
 Si rien n'est pertinent : []
 Pas d'explication, pas de markdown code fence.`;
+}
+
+/** Strictly parse a JSON string into a string array, or null if it isn't one. */
+function parseBasenames(raw: string): string[] | null {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return null;
+    return parsed.filter((x): x is string => typeof x === "string");
+  } catch {
+    return null;
+  }
 }
 
 function extractJsonArray(text: string): string[] | null {

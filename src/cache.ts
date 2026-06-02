@@ -1,8 +1,10 @@
 /**
  * Local LRU cache for memhook selections.
  *
- * Key = sha256(prompt + catalog_mtime + cwd + script_version). Bump any of
- * these and the entry is automatically invalidated.
+ * Key = sha256(prompt + catalog_mtime + cwd + script_version + provider). Bump
+ * any of these and the entry is automatically invalidated — `provider`
+ * (type + model) is included so switching provider/model never serves a stale
+ * selection made by a different model.
  *
  * Storage: one JSON file per key under config.cache.dir. TTL enforced via
  * filesystem mtime check.
@@ -17,6 +19,8 @@ export interface CacheKeyInput {
   catalogMtimeMs: number;
   cwd: string;
   scriptVersion: string;
+  /** Provider identity, e.g. "anthropic:claude-haiku-4-5". */
+  provider: string;
 }
 
 export class LocalCache {
@@ -29,7 +33,7 @@ export class LocalCache {
   }
 
   key(input: CacheKeyInput): string {
-    const raw = `${input.prompt}|${input.catalogMtimeMs}|${input.cwd}|${input.scriptVersion}`;
+    const raw = `${input.prompt}|${input.catalogMtimeMs}|${input.cwd}|${input.scriptVersion}|${input.provider}`;
     return createHash("sha256").update(raw).digest("hex");
   }
 

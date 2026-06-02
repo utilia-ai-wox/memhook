@@ -32,6 +32,8 @@ const env = {
   MEMHOOK_TRIVIAL_FILE: join(root, "no-such-file.txt"),
   MEMHOOK_PROJECTS_ROOT: join(root, "projects"),
   MEMHOOK_GLOBAL_RULES_DIR: rulesDir,
+  // Pin to an absent path so loadConfig never reads the real user config.yaml.
+  MEMHOOK_CONFIG: join(root, "no-config.yaml"),
 } as NodeJS.ProcessEnv;
 
 function mockFetch(
@@ -144,5 +146,43 @@ describe("router", () => {
     expect(add).toContain("feedback_one.md");
     expect(add).not.toContain("feedback_two.md");
     vi.unstubAllGlobals();
+  });
+
+  it("ollama provider path injects with NO api key set (no no_api_key)", async () => {
+    const ollamaFetch = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            message: { content: '["feedback_alpha.md"]' },
+            prompt_eval_count: 3,
+            eval_count: 2,
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+    );
+    vi.stubGlobal("fetch", ollamaFetch);
+    const { ANTHROPIC_API_KEY: _omit, ...noKey } = env;
+    const result = await route(JSON.stringify({ prompt: "ollama-route", cwd: root }), {
+      ...noKey,
+      MEMHOOK_PROVIDER: "ollama",
+    });
+    expect(result.hookSpecificOutput.additionalContext).toContain("Content A");
+    expect(ollamaFetch).toHaveBeenCalledTimes(1);
+    expect(String(ollamaFetch.mock.calls[0]?.[0])).toContain("11434/api/chat");
+    expect(readFileSync(logPath, "utf8")).toContain('"status":"ok"');
+    vi.unstubAllGlobals();
+  });
+
+  it("returns empty + status provider_init_failed when construction throws", async () => {
+    // A YAML config with an empty model forces the Anthropic constructor to
+    // throw; the router must catch it and fail-soft rather than crash the hook.
+    const badCfg = join(root, "bad-model.yaml");
+    writeFileSync(badCfg, 'provider:\n  model: ""\n');
+    const result = await route(JSON.stringify({ prompt: "init-fail-unique", cwd: root }), {
+      ...env,
+      MEMHOOK_CONFIG: badCfg,
+    });
+    expect(result.hookSpecificOutput.additionalContext).toBe("");
+    expect(readFileSync(logPath, "utf8")).toContain('"status":"provider_init_failed"');
   });
 });

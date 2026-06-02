@@ -1,16 +1,20 @@
 /**
- * Anthropic provider — Haiku 4.5 default for memhook v0.1.
+ * Anthropic provider — Haiku 4.5 default for memhook.
  *
  * Wire format:
  *   POST https://api.anthropic.com/v1/messages
  *   Headers: x-api-key, anthropic-version
  *   Body: { model, max_tokens, system: [{type, text, cache_control}], messages }
  *
- * Cache control TTL "1h" is GA in 2026 — no beta header required. `betaHeaders`
- * defaults to `[]`; a non-empty list still maps to the `anthropic-beta` header
- * for forward-compat with future beta features.
+ * Anthropic-specific concepts (ephemeral prompt caching, `anthropic-beta`
+ * headers) are passed via `AnthropicProviderOptions` at construction time, NOT
+ * through the shared `SelectionRequest` — so the OpenAI and Ollama adapters
+ * never see them. Cache control TTL "1h" is GA in 2026; no beta header is
+ * required, but a non-empty `betaHeaders` list still maps to `anthropic-beta`
+ * for forward-compat.
  *
- * Retry: single retry on 429/503 with 500ms backoff (max 2 attempts).
+ * Retry: single retry on 429/503 with 500ms backoff (max 2 attempts), via the
+ * shared `postJsonWithRetry` transport.
  */
 
 import type {
@@ -20,20 +24,34 @@ import type {
   SelectionResponse,
   UsageBreakdown,
 } from "./types.js";
+import { postJsonWithRetry } from "./http.js";
+
+/** Anthropic-only knobs, kept off the shared provider interface. */
+export interface AnthropicProviderOptions {
+  betaHeaders?: string[];
+  cacheControlTtl?: "5m" | "1h";
+}
 
 const ANTHROPIC_VERSION = "2023-06-01";
 const DEFAULT_BASE_URL = "https://api.anthropic.com/v1/messages";
 const RETRY_BACKOFF_MS = 500;
+const RETRY_STATUSES = [429, 503] as const;
 
 export class AnthropicProvider implements Provider {
   readonly name = "anthropic";
+  private readonly apiKey: string;
 
-  constructor(private readonly config: ProviderConfig) {
+  constructor(
+    private readonly config: ProviderConfig,
+    private readonly options: AnthropicProviderOptions = {},
+  ) {
     if (!config.apiKey) throw new Error("AnthropicProvider: apiKey is required");
     if (!config.model) throw new Error("AnthropicProvider: model is required");
+    this.apiKey = config.apiKey;
   }
 
   async select(req: SelectionRequest): Promise<SelectionResponse> {
+    const ttl = this.options.cacheControlTtl;
     const body = JSON.stringify({
       model: this.config.model,
       max_tokens: req.maxOutputTokens,
@@ -41,9 +59,7 @@ export class AnthropicProvider implements Provider {
         {
           type: "text",
           text: req.systemPrompt,
-          cache_control: req.cacheControlTtl
-            ? { type: "ephemeral", ttl: req.cacheControlTtl }
-            : { type: "ephemeral" },
+          cache_control: ttl ? { type: "ephemeral", ttl } : { type: "ephemeral" },
         },
       ],
       messages: [{ role: "user", content: req.userPrompt }],
@@ -51,62 +67,28 @@ export class AnthropicProvider implements Provider {
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
-      "x-api-key": this.config.apiKey,
+      "x-api-key": this.apiKey,
       "anthropic-version": ANTHROPIC_VERSION,
     };
-    const betas = this.config.betaHeaders ?? [];
+    const betas = this.options.betaHeaders ?? [];
     if (betas.length > 0) headers["anthropic-beta"] = betas.join(",");
 
-    const url = this.config.baseUrl ?? DEFAULT_BASE_URL;
+    const { json, httpStatus, latencyMs } = await postJsonWithRetry({
+      url: this.config.baseUrl ?? DEFAULT_BASE_URL,
+      headers,
+      body,
+      timeoutMs: req.timeoutMs,
+      retryStatuses: RETRY_STATUSES,
+      backoffMs: RETRY_BACKOFF_MS,
+    });
 
-    let lastResponse: SelectionResponse | null = null;
-    for (let attempt = 1; attempt <= 2; attempt++) {
-      const started = Date.now();
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), req.timeoutMs);
-      let resp: Response;
-      try {
-        resp = await fetch(url, {
-          method: "POST",
-          headers,
-          body,
-          signal: controller.signal,
-        });
-      } catch (err) {
-        clearTimeout(timer);
-        if (attempt === 1) {
-          await sleep(RETRY_BACKOFF_MS);
-          continue;
-        }
-        throw err;
-      }
-      clearTimeout(timer);
-      const latencyMs = Date.now() - started;
-      const status = resp.status;
-
-      if (attempt === 1 && (status === 429 || status === 503)) {
-        await sleep(RETRY_BACKOFF_MS);
-        continue;
-      }
-
-      const json = (await resp.json().catch(() => null)) as Record<string, unknown> | null;
-      lastResponse = {
-        rawText: extractText(json),
-        usage: extractUsage(json),
-        latencyMs,
-        httpStatus: status,
-      };
-      break;
-    }
-    if (!lastResponse) {
-      throw new Error("AnthropicProvider: no response after retries");
-    }
-    return lastResponse;
+    return {
+      rawText: extractText(json),
+      usage: extractUsage(json),
+      latencyMs,
+      httpStatus,
+    };
   }
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function extractText(json: Record<string, unknown> | null): string {
@@ -119,7 +101,7 @@ function extractText(json: Record<string, unknown> | null): string {
 
 function extractUsage(json: Record<string, unknown> | null): UsageBreakdown {
   const usage = (json?.["usage"] as Record<string, unknown> | undefined) ?? {};
-  const num = (key: string) => {
+  const num = (key: string): number => {
     const v = usage[key];
     return typeof v === "number" ? v : 0;
   };
