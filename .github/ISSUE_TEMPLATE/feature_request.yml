@@ -33,5 +33,5 @@ body:
           required: true
         - label: This preserves the fail-soft contract (the hook never blocks Claude Code).
           required: true
-        - label: This does not introduce telemetry, phone-home, or required outbound calls beyond the Anthropic API.
+        - label: This does not introduce telemetry, phone-home, or required outbound calls beyond the user's chosen LLM provider endpoint (Anthropic by default; OpenAI or local Ollama if opted in).
           required: true

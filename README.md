@@ -1,58 +1,63 @@
+<div align="center">
+
 # memhook
 
-> Semantic memory router for Claude Code — picks the relevant feedbacks &
-> rules for each prompt via Haiku, injects them as `additionalContext`.
+**Stop loading every memory file on every prompt. memhook routes only the relevant ones.**
 
-**Status**: `v0.1.0-preview` — extracted from a private hook used daily across
-3 large repos. API surface and naming may shift before `v1.0.0`.
+<p align="center">
+  <a href="https://www.npmjs.com/package/memhook"><img src="https://img.shields.io/npm/v/memhook?color=cb3837&logo=npm" alt="npm version"></a>
+  <a href="https://www.npmjs.com/package/memhook"><img src="https://img.shields.io/npm/dm/memhook?color=cb3837" alt="npm downloads"></a>
+  <a href="https://github.com/utilia-ai-wox/memhook/actions/workflows/ci.yml"><img src="https://github.com/utilia-ai-wox/memhook/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/utilia-ai-wox/memhook/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/memhook?color=blue" alt="License: MIT"></a>
+  <img src="https://img.shields.io/node/v/memhook" alt="Node version">
+  <a href="https://github.com/utilia-ai-wox/memhook/stargazers"><img src="https://img.shields.io/github/stars/utilia-ai-wox/memhook?style=social" alt="GitHub stars"></a>
+</p>
 
-## Why
+A semantic memory router for [Claude Code](https://claude.com/claude-code) — a
+`UserPromptSubmit` hook that picks the relevant `feedback_*.md` & `rule_*.md`
+files for each prompt and injects them as `additionalContext`.
+
+</div>
+
+<!-- TODO(demo): record an asciinema of `tail -f ~/.claude/logs/memhook.log`
+     while prompting Claude Code — it shows the router picking files live.
+     Embed: [![asciicast](https://asciinema.org/a/XXXXX.svg)](https://asciinema.org/a/XXXXX) -->
+
+## ✨ Features
+
+- 🎯 **Relevant-only injection** — a cheap model picks the 0–5 memory files that matter for _this_ prompt.
+- 💸 **Token-frugal** — skips the 10–14k-token catalog dump; injects ~2k tokens of signal.
+- 🛡️ **Fail-soft** — never blocks Claude Code; every error path falls back to empty context.
+- 🔌 **Multi-provider** — Anthropic (default), OpenAI, or local Ollama. Your key, your endpoint.
+- 🤫 **Zero telemetry** — the only outbound call is the LLM endpoint _you_ chose.
+- 🪶 **One dependency** — `yaml`, with zero sub-deps.
+- ⚡ **Cached & pre-filtered** — an LRU cache + a trivial-prompt skip keep latency near zero.
+
+## 🤔 Why
 
 Claude Code's `~/.claude/` directory accumulates a growing set of
 `feedback_*.md` (behavioural corrections) and `rule_*.md` (project doctrine)
-files. Loading all of them on every prompt is wasteful (10–14k tokens of
-catalog overhead, most of it irrelevant to the current question).
+files. Loading all of them on every prompt is wasteful — most of it is
+irrelevant to the question at hand.
 
-memhook uses **Haiku 4.5** as a cheap router: each user prompt is matched
-against a one-line catalog of all available memory files, and only the 0–5
-most relevant ones are read and injected into `additionalContext`. The rest
-sit on disk, invisible to Claude until they matter.
+memhook uses a cheap router model (**Haiku 4.5** by default) to match each
+prompt against a one-line catalog of all your memory files, and injects only
+the most relevant ones. The rest sit on disk, invisible until they matter.
 
-## How it works
+| Approach              | Tokens / prompt | Relevance         |
+| --------------------- | --------------- | ----------------- |
+| Load all memory files | 10–14k          | mostly irrelevant |
+| **memhook**           | ~2k             | only what matches |
 
-```
-UserPromptSubmit hook
-    │
-    ▼
-┌────────────────────────────────────────┐
-│ 1. Pre-filter trivial prompts          │ ── "ok" / "merci" → skip LLM
-│ 2. Check local LRU cache               │ ── identical prompt < 60min → hit
-│ 3. Call Haiku with catalog as system   │ ── ephemeral 1h cache control
-│ 4. Parse JSON array of basenames       │ ── ["feedback_X.md", "rule_Y.md"]
-│ 5. Read files, cap by token budget     │ ── max 9.5k chars or 5 files
-│ 6. Emit additionalContext              │
-└────────────────────────────────────────┘
-```
-
-## Install
+## 🚀 Quick start
 
 ```bash
-npm install -g memhook      # not yet published — see "From source" below
+npm install -g memhook
 ```
 
-### From source (preview)
+Then:
 
-```bash
-git clone https://github.com/utilia-ai-wox/memhook.git
-cd memhook
-bun install
-bun run build
-npm link
-```
-
-## Setup
-
-1. **Set your API key**
+1. **Set your API key** (Anthropic by default — see [Providers](#-providers) for OpenAI / Ollama)
 
    ```bash
    export ANTHROPIC_API_KEY=sk-ant-…
@@ -71,21 +76,45 @@ npm link
    {
      "hooks": {
        "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "memhook run" }] }],
-       "SessionStart": [
-         {
-           "hooks": [{ "type": "command", "command": "memhook build-catalog" }]
-         }
-       ]
+       "SessionStart": [{ "hooks": [{ "type": "command", "command": "memhook build-catalog" }] }]
      }
    }
    ```
 
-## Configuration
+<details>
+<summary>From source (for contributors)</summary>
 
-Every knob is an env var, and (since `v0.2`) optionally a YAML file.
-Precedence per key is **env var > YAML file > built-in default**, so an
-env-var-only setup behaves exactly as before. Sensible defaults work for most
-users.
+```bash
+git clone https://github.com/utilia-ai-wox/memhook.git
+cd memhook
+bun install
+bun run build
+npm link
+```
+
+</details>
+
+## 🔍 How it works
+
+```
+UserPromptSubmit hook
+    │
+    ▼
+┌────────────────────────────────────────┐
+│ 1. Pre-filter trivial prompts          │ ── "ok" / "merci" → skip LLM
+│ 2. Check local LRU cache               │ ── identical prompt < 60min → hit
+│ 3. Call the router with catalog        │ ── ephemeral 1h cache control
+│ 4. Parse JSON array of basenames       │ ── ["feedback_X.md", "rule_Y.md"]
+│ 5. Read files, cap by token budget     │ ── max 9.5k chars or 5 files
+│ 6. Emit additionalContext              │
+└────────────────────────────────────────┘
+```
+
+## ⚙️ Configuration
+
+Every knob is an env var, and optionally a YAML file. Precedence per key is
+**env var > YAML file > built-in default**, so an env-var-only setup behaves
+exactly as before. Sensible defaults work for most users.
 
 | Variable                         | Default                         | Purpose                                |
 | -------------------------------- | ------------------------------- | -------------------------------------- |
@@ -119,7 +148,7 @@ selection:
   maxFiles: 5
 ```
 
-## Providers
+## 🔌 Providers
 
 The default provider is **Anthropic** — with no `MEMHOOK_PROVIDER` set, the
 only outbound call memhook ever makes is to `api.anthropic.com`, using your own
@@ -141,7 +170,7 @@ LLM endpoint _you_ choose to route through.
   the native `/api/chat` endpoint with `stream:false`; the timeout defaults to
   30s to absorb cold model loads.
 
-## Observability
+## 📊 Observability
 
 Every invocation appends one JSON line to `~/.claude/logs/memhook.log`:
 
@@ -168,7 +197,7 @@ jq -c 'select((.ts | fromdateiso8601) > (now - 7*86400)) | .status' \
   ~/.claude/logs/memhook.log | sort | uniq -c
 ```
 
-## Status values
+### Status values
 
 | `status`               | Meaning                                               |
 | ---------------------- | ----------------------------------------------------- |
@@ -184,20 +213,29 @@ jq -c 'select((.ts | fromdateiso8601) > (now - 7*86400)) | .status' \
 | `api_no_content`       | API returned 200 but no text                          |
 | `parse_invalid`        | Response wasn't a valid JSON array                    |
 
-## Fail-soft
+## 🛡️ Fail-soft
 
 memhook never blocks Claude Code. On any error — missing key, network
 timeout, malformed JSON, broken filesystem — it emits an empty
-`additionalContext` and logs the status. Your prompt always reaches the
-model, just without injected memories for that turn.
+`additionalContext` and logs the status. **Your prompt always reaches the
+model**, just without injected memories for that turn.
 
-## Roadmap
+## 🗺️ Roadmap
 
-- `v0.2` ✅ — YAML config file, OpenAI provider, Ollama local provider
-- `v0.3` — TUI live monitor (`memhook tail`)
+- `v0.2` ✅ — YAML config file, OpenAI provider, Ollama local provider (published on npm)
+- `v0.3` — `memhook init` setup wizard + TUI live monitor (`memhook tail`)
 - `v0.4` — Companion skills (`/wrap`, `/curate`, `/relay`)
-- `v0.5` — Auto-bootstrap (`memhook init` detects empty memory dirs)
-- `v1.0` — Cross-platform validated, published to npm
+- `v1.0` — API frozen, cross-platform validated, listed on awesome-lists
+
+## 🤝 Contributing
+
+Contributions welcome — please read [CONTRIBUTING.md](CONTRIBUTING.md) first.
+The hook contract (fail-soft, no telemetry, strict TypeScript) is
+non-negotiable; the [`failsoft-auditor`](.claude/agents/failsoft-auditor.md)
+agent guards it on every PR.
+
+> [!TIP]
+> ⭐ If memhook saves you tokens, **star the repo** — it helps other Claude Code users find it.
 
 ## License
 

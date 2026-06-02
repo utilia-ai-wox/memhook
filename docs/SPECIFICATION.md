@@ -6,9 +6,10 @@
 > Changes to this spec happen through dedicated PRs labelled `spec`,
 > never as a side-effect of feature work.
 >
-> **Status**: v0.1 spec, frozen 2026-06-01. **Implementation status**:
-> v0.1.0-preview.0 in progress; see [§22 Roadmap](#22-roadmap) for
-> the version-by-version delivery plan.
+> **Status**: spec first frozen 2026-06-01, refreshed for v0.2.
+> **Implementation status**: `0.2.2` — published on npm. v0.2 shipped the
+> OpenAI + Ollama providers and the YAML config file; see
+> [§22 Roadmap](#22-roadmap) for the delivery plan.
 
 ---
 
@@ -53,7 +54,7 @@
 | **Repository**  | https://github.com/utilia-ai-wox/memhook                                                                                             |
 | **npm package** | `memhook` (scope `none`)                                                                                                             |
 | **Bin command** | `memhook`                                                                                                                            |
-| **Status**      | `v0.1.0-preview` — extracted from a private daily-use hook; API surface may shift before `1.0.0`.                                    |
+| **Status**      | `0.2.2` — published on npm; extracted from a private daily-use hook; API surface may still shift before `1.0.0`.                     |
 
 ### Naming rationale
 
@@ -73,26 +74,25 @@ that remain available if `memhook` ever collides: `recallhook`,
 
 ## 2. Stack
 
-| Layer             | Choice                                                                | Rationale                                                                                                   |
-| ----------------- | --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| Runtime           | **Node 18+** (LTS line)                                               | Active LTS through 2027. Required `fs.watch` recursive support.                                             |
-| Language          | **TypeScript strict ESM**                                             | `strict`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes` enabled. ESM only — no CommonJS.         |
-| Build             | **`tsc -p tsconfig.json`** → `dist/`                                  | No bundler. Distribution as ESM with `.d.ts`.                                                               |
-| Tests             | **vitest**                                                            | Fast, ESM-native, mock-friendly. Snapshot only when justified.                                              |
-| Package manager   | **npm** (primary)                                                     | `package-lock.json` committed for reproducibility. `bun` allowed for local dev acceleration (not required). |
-| Lint              | **eslint** flat config + `typescript-eslint` strict + stylistic       |                                                                                                             |
-| Format            | **prettier**                                                          | Config: 2-space indent, semicolons, trailing commas, line width 100.                                        |
-| Commit hooks      | **husky** v9 + **commitlint** + **lint-staged**                       |                                                                                                             |
-| Release           | **release-please-action** v4, manifest mode                           | Pre-release tags `0.X.Y-preview.N`.                                                                         |
-| CI                | **GitHub Actions** matrix Linux + macOS + Windows × Node 18 / 20 / 22 | GitHub-hosted runners — free for a public repo.                                                             |
-| Security scanning | **CodeQL** weekly + on push/PR                                        |                                                                                                             |
-| Dependency bumps  | **Dependabot** weekly, grouped by category                            |                                                                                                             |
+| Layer             | Choice                                                                | Rationale                                                                                                                                                                 |
+| ----------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Runtime           | **Node 18+** (LTS line)                                               | Active LTS through 2027. Required `fs.watch` recursive support.                                                                                                           |
+| Language          | **TypeScript strict ESM**                                             | `strict`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes` enabled. ESM only — no CommonJS.                                                                       |
+| Build             | **`tsc -p tsconfig.json`** → `dist/`                                  | No bundler. Distribution as ESM with `.d.ts`.                                                                                                                             |
+| Tests             | **vitest**                                                            | Fast, ESM-native, mock-friendly. Snapshot only when justified.                                                                                                            |
+| Package manager   | **npm** (primary)                                                     | No committed lockfile (dropped in `9fb393f` to dodge an npm cross-platform optional-dep bug); CI + publish use `npm install`. `bun` allowed for local dev (not required). |
+| Lint              | **eslint** flat config + `typescript-eslint` strict + stylistic       |                                                                                                                                                                           |
+| Format            | **prettier**                                                          | Config: 2-space indent, semicolons, trailing commas, line width 100.                                                                                                      |
+| Commit hooks      | **husky** v9 + **commitlint** + **lint-staged**                       |                                                                                                                                                                           |
+| Release           | **release-please-action** v4, manifest mode                           | Pre-release tags `0.X.Y-preview.N`.                                                                                                                                       |
+| CI                | **GitHub Actions** matrix Linux + macOS + Windows × Node 18 / 20 / 22 | GitHub-hosted runners — free for a public repo.                                                                                                                           |
+| Security scanning | **CodeQL** weekly + on push/PR                                        |                                                                                                                                                                           |
+| Dependency bumps  | **Dependabot** weekly, grouped by category                            |                                                                                                                                                                           |
 
 ### Runtime dependency policy
 
-- **Zero runtime dependencies** in the core router as of v0.1.
-- Provider adapters may bring their own optional deps, documented per
-  provider in [`docs/PROVIDERS.md`](PROVIDERS.md).
+- **One runtime dependency** as of v0.2: `yaml` (^2.9.0, zero sub-deps),
+  used by the YAML config loader. The core router otherwise pulls in nothing.
 - No transitive dep introducing telemetry / phone-home. Every dep bump
   reviewed against this rule.
 
@@ -104,8 +104,9 @@ memhook follows **SemVer 2.0** strictly.
 
 ### Pre-1.0 phase
 
-- Tag format: `v0.X.Y-preview.N` (e.g. `v0.1.0-preview.0`).
-- Any `feat` → minor bump. Any `fix` → patch bump.
+- Tag format: plain `v0.X.Y` (e.g. `v0.2.2`). No `-preview` suffix —
+  `0.x` already signals an unstable API.
+- Any `feat` → minor bump. Any `fix` / `perf` → patch bump.
 - Any breaking change in `0.x` → minor bump (acceptable in `0.x` per
   SemVer §4). Communicated in CHANGELOG under `BREAKING CHANGES`.
 
@@ -122,8 +123,10 @@ memhook follows **SemVer 2.0** strictly.
 3. The release PR updates `package.json` version, `CHANGELOG.md`,
    `.release-please-manifest.json`.
 4. Merging the release PR creates a Git tag and a GitHub Release.
-5. `npm publish` is **manual** in v0.1 (deferred automation to v0.3).
-   Command: `npm publish --tag preview` until v1.0.0; then `npm publish`.
+5. `npm publish` is **automated**: the `publish-npm` job in
+   `release-please.yml` runs when `release_created` is true, authenticates
+   via npm **Trusted Publishing** (GitHub OIDC, no `NPM_TOKEN`), and runs
+   `npm publish --provenance --access public`.
 
 ---
 
@@ -183,9 +186,9 @@ writes a JSON envelope on stdout. No daemon. No long-lived process.
 └──────────────────────────────────────────────────────────────┘
        │            │             │              │
        ▼            ▼             ▼              ▼
-   config.ts   preFilter.ts   cache.ts    providers/anthropic.ts
-                                          providers/openai.ts (v0.2)
-                                          providers/ollama.ts (v0.2)
+   config.ts   preFilter.ts   cache.ts    providers/factory.ts
+                                          providers/{anthropic,openai,ollama}.ts
+                                          providers/http.ts (shared transport)
 ```
 
 Key invariants:
@@ -284,31 +287,34 @@ memhook/
 │   ├── catalog.ts            — catalog builder (§8.2)
 │   ├── cache.ts              — local LRU cache (§8.3)
 │   ├── preFilter.ts          — trivial-prompt filter (§8.4)
-│   ├── config.ts             — env-driven config loader (§8.6)
+│   ├── config.ts             — config resolver, env > yaml > default (§8.6)
+│   ├── configFile.ts         — YAML config loader (fail-soft)
+│   ├── version.ts            — MEMHOOK_VERSION (release-please-managed)
 │   └── providers/
 │       ├── types.ts          — Provider interface (§8.5)
-│       ├── anthropic.ts      — Anthropic Messages adapter (ship v0.1)
-│       ├── openai.ts         — OpenAI Chat Completions adapter (v0.2)
-│       └── ollama.ts         — Ollama HTTP adapter (v0.2)
+│       ├── http.ts           — shared postJsonWithRetry transport
+│       ├── factory.ts        — createProvider(config, apiKey)
+│       ├── anthropic.ts      — Anthropic Messages adapter
+│       ├── openai.ts         — OpenAI Chat Completions adapter
+│       └── ollama.ts         — Ollama native /api/chat adapter
 │
 ├── bin/
 │   └── memhook.ts            — CLI entrypoint
 │
-├── tests/
+├── tests/                    — 46 tests across 7 suites
 │   ├── router.test.ts
 │   ├── cache.test.ts
 │   ├── preFilter.test.ts
-│   ├── catalog.test.ts       — v0.2
-│   └── providers/
-│       └── anthropic.test.ts — v0.2
+│   ├── config.test.ts
+│   ├── factory.test.ts
+│   ├── openai.test.ts
+│   └── ollama.test.ts
 │
 ├── dist/                     — tsc output, gitignored, built on publish
 │
 └── docs/
     ├── SPECIFICATION.md      — THIS FILE
-    ├── CONFIG.md             — env var reference (v0.2)
-    ├── PROVIDERS.md          — provider setup guides (v0.2)
-    └── BENCH.md              — bench methodology (v0.2)
+    └── private/              — internal planning notes (gitignored)
 ```
 
 ---
@@ -343,18 +349,19 @@ export async function route(
 
 **Status field values** (exhaustive — any new status must be added here):
 
-| Status            | Meaning                                               |
-| ----------------- | ----------------------------------------------------- |
-| `ok`              | Files injected from a fresh provider selection.       |
-| `cache_hit`       | Files injected from local LRU cache.                  |
-| `pre_filter_skip` | Trivial prompt; LLM call skipped.                     |
-| `empty_selection` | Provider returned `[]`.                               |
-| `all_unfound`     | Provider returned basenames that don't exist on disk. |
-| `no_catalog`      | Catalog file missing.                                 |
-| `no_api_key`      | `$ANTHROPIC_API_KEY` (or configured env) absent.      |
-| `api_no_response` | Provider HTTP error / network timeout.                |
-| `api_no_content`  | Provider 200 but no text returned.                    |
-| `parse_invalid`   | Response wasn't a valid JSON array.                   |
+| Status                 | Meaning                                                                 |
+| ---------------------- | ----------------------------------------------------------------------- |
+| `ok`                   | Files injected from a fresh provider selection.                         |
+| `cache_hit`            | Files injected from local LRU cache.                                    |
+| `pre_filter_skip`      | Trivial prompt; LLM call skipped.                                       |
+| `empty_selection`      | Provider returned `[]`.                                                 |
+| `all_unfound`          | Provider returned basenames that don't exist on disk.                   |
+| `no_catalog`           | Catalog file missing.                                                   |
+| `no_api_key`           | `$ANTHROPIC_API_KEY` (or configured env) absent; not needed for Ollama. |
+| `provider_init_failed` | `createProvider()` threw during construction (bad config).              |
+| `api_no_response`      | Provider HTTP error / network timeout.                                  |
+| `api_no_content`       | Provider 200 but no text returned.                                      |
+| `parse_invalid`        | Response wasn't a valid JSON array.                                     |
 
 ### 8.2 `src/catalog.ts`
 
@@ -398,11 +405,13 @@ File-based LRU cache. One JSON file per key under
 **Key derivation**:
 
 ```
-key = sha256(prompt + "|" + catalog_mtime + "|" + cwd + "|" + script_version)
+key = sha256(prompt + "|" + catalog_mtime + "|" + cwd + "|" + script_version + "|" + provider)
 ```
 
 Each component is required: changing any one invalidates the entry.
-The `script_version` field comes from `package.json:version` so a
+`provider` is `type:model` (e.g. `anthropic:claude-haiku-4-5`), so switching
+provider or model never serves a stale selection. `script_version` comes from
+`src/version.ts` (`MEMHOOK_VERSION`, release-please-managed), so a release
 bump automatically retires every cached selection.
 
 **TTL**: 60 minutes by default (`MEMHOOK_CACHE_TTL_MIN`). Entries
@@ -453,19 +462,28 @@ interface Provider {
 ```
 
 `SelectionRequest` carries `systemPrompt`, `userPrompt`,
-`maxOutputTokens`, `cacheControlTtl`, `timeoutMs`. `SelectionResponse`
-carries `rawText`, `usage` (input / output / cache_create / cache_read
-tokens), `latencyMs`, `httpStatus`.
+`maxOutputTokens`, `timeoutMs` — provider-agnostic only. Anthropic-specific
+knobs (`betaHeaders`, `cacheControlTtl`) live in `AnthropicProviderOptions`,
+passed to the Anthropic adapter at construction, never on `SelectionRequest`.
+`ProviderConfig.apiKey` is **optional** (local providers like Ollama need
+none). `SelectionResponse` carries `rawText`, `usage` (input / output /
+cache_create / cache_read tokens), `latencyMs`, `httpStatus`.
 
-The router selects a provider based on `config.provider.type` and
-constructs it with `apiKey` resolved from `env[config.provider.apiKeyEnv]`.
+`createProvider(config, apiKey)` (`src/providers/factory.ts`) selects the
+adapter from `config.provider.type`; the router's API-key gate is
+provider-aware (Ollama skips it). All adapters share `src/providers/http.ts`.
 
-**v0.1 ships**: `anthropic` only. **v0.2 will ship**: `openai`, `ollama`.
+**Ships**: `anthropic` (default), `openai`, and `ollama`.
 
 ### 8.6 `src/config.ts`
 
-Env-driven config loader. **No YAML in v0.1** (deferred to v0.2 with
-`yaml` or `js-yaml`). Single exported function:
+Config resolver with precedence **env > YAML > default**. YAML is opt-in,
+loaded by `src/configFile.ts` from `$MEMHOOK_CONFIG` or
+`~/.config/memhook/config.yaml` (parsed by the `yaml` package, fail-soft to
+defaults). Empty/whitespace env values are treated as absent; numeric values
+are clamped to positive integers; the boolean vocabulary is `true`/`1`/`yes`/
+`on` (case-insensitive); a per-provider defaults table seeds
+model / apiKeyEnv / timeout. Single exported function:
 
 ```ts
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): MemhookConfig;
@@ -487,7 +505,7 @@ memhook <command> [options]
 | ----------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `memhook run`           | v0.1   | Read hook JSON from stdin, emit `additionalContext`.                                                                                               |
 | `memhook build-catalog` | v0.1   | (Re)build `~/.claude/cache/memory-catalog.txt`.                                                                                                    |
-| `memhook version`       | v0.1   | Print `package.json:version`.                                                                                                                      |
+| `memhook version`       | v0.1   | Print `MEMHOOK_VERSION` (`src/version.ts`).                                                                                                        |
 | `memhook help`          | v0.1   | Print this command list + env var reference.                                                                                                       |
 | `memhook init`          | v0.3   | Interactive setup: detect Claude Code paths, write hook to `~/.claude/settings.json` (with backup), validate API key, bootstrap empty memory dirs. |
 | `memhook uninstall`     | v0.3   | Remove hooks from `~/.claude/settings.json` (with backup), prompt for cache + log cleanup.                                                         |
@@ -560,7 +578,7 @@ cache lookup, file injection, and JSON serialisation.
 
 See [§8.5](#85-srcproviders) for the interface. Per-provider notes:
 
-### 11.1 Anthropic (ships v0.1)
+### 11.1 Anthropic (default)
 
 - Model default: `claude-haiku-4-5` (un-snapshotted alias — avoids
   404 if Anthropic retires a snapshot).
@@ -573,19 +591,20 @@ See [§8.5](#85-srcproviders) for the interface. Per-provider notes:
   (the catalog), divides input cost ~10× over a continuous session.
 - Retry: single retry on HTTP 429 / 503 with 500 ms backoff.
 
-### 11.2 OpenAI (v0.2)
+### 11.2 OpenAI
 
 - Model default: `gpt-4o-mini`.
 - Endpoint: `https://api.openai.com/v1/chat/completions`.
 - Cost: ~$0.15 input / $0.60 output per MTok. ~33 % cheaper than Haiku.
 - Recall measured at **77.8 %** vs 88.9 % for Haiku (bench v2, 9 prompts).
 
-### 11.3 Ollama (v0.2)
+### 11.3 Ollama
 
-- Model default: `qwen2.5:1.5b` (986 MB disk Q4, ~1.2 GB RAM resident).
-- Endpoint: `http://localhost:11434/api/chat`.
+- Model default: `llama3.1` (must be pulled locally: `ollama pull llama3.1`).
+- Endpoint: `http://localhost:11434/api/chat` (native), `stream:false`.
+- No API key required for local use; the key gate is skipped for Ollama.
+- Default timeout: 30 s (not 8 s) — absorbs cold model loads.
 - Cost: zero — local inference.
-- Recall: provider-dependent; document a measured baseline before shipping.
 - No `cache_control` field — the cache feature is Anthropic-specific.
 
 ---
@@ -599,7 +618,8 @@ See [§8.3](#83-srccachets) for implementation. Invariants:
   `["feedback_x.md", "rule_y.md"]`).
 - Empty arrays (`[]`) are **not cached** (a `[]` from the provider
   usually means "nothing relevant" — re-asking next time costs ~zero).
-- A `script_version` change retires every cached entry transparently.
+- A `script_version` **or** provider (`type:model`) change retires every
+  cached entry transparently.
 - Eviction is best-effort; failures during cleanup never block the hook.
 
 ---
@@ -656,7 +676,7 @@ memhook writes one JSONL line per invocation to
 | `cache_read`                 | integer                 | Anthropic-only; tokens read from the cache.                                                |
 | `additional_size_chars`      | integer                 | Length of the injected `additionalContext` string.                                         |
 | `additional_size_tokens_est` | integer                 | `floor(chars / 4)` rough estimate.                                                         |
-| `status`                     | string                  | One of the 10 values in [§8.1](#81-srcrouterts).                                           |
+| `status`                     | string                  | One of the 11 values in [§8.1](#81-srcrouterts).                                           |
 
 This log is the primary observability surface. Cost dashboards and
 the `memhook tail` TUI both parse it. The schema is **frozen**: new
@@ -667,15 +687,21 @@ without a major version bump.
 
 ## 15. Configuration
 
-All knobs are env vars in v0.1 (no config file). Sensible defaults
-work for most users.
+Every knob resolves **env var > YAML file > default**. The YAML file is
+opt-in (`$MEMHOOK_CONFIG` or `~/.config/memhook/config.yaml`). Defaults for
+`MEMHOOK_MODEL` / `MEMHOOK_API_KEY_ENV` / `MEMHOOK_BASE_URL` / `MEMHOOK_TIMEOUT_MS`
+are **per-provider** (e.g. Ollama timeout 30000, OpenAI model gpt-4o-mini);
+the table below shows the Anthropic-default values. Sensible defaults work
+for most users.
 
 | Variable                       | Default                                   | Type   | Purpose                                                       |
 | ------------------------------ | ----------------------------------------- | ------ | ------------------------------------------------------------- |
 | `MEMHOOK_ENABLED`              | `true`                                    | bool   | Master toggle.                                                |
-| `MEMHOOK_MODEL`                | `claude-haiku-4-5`                        | string | Provider model id.                                            |
+| `MEMHOOK_PROVIDER`             | `anthropic`                               | enum   | Provider: `anthropic` / `openai` / `ollama`.                  |
+| `MEMHOOK_MODEL`                | `claude-haiku-4-5`                        | string | Provider model id (per-provider default).                     |
 | `MEMHOOK_API_KEY_ENV`          | `ANTHROPIC_API_KEY`                       | string | Name of env var holding the API key.                          |
-| `MEMHOOK_BASE_URL`             | `https://api.anthropic.com/v1/messages`   | string | Provider endpoint.                                            |
+| `MEMHOOK_BASE_URL`             | `https://api.anthropic.com/v1/messages`   | string | Provider endpoint (per-provider default).                     |
+| `MEMHOOK_CONFIG`               | `~/.config/memhook/config.yaml`           | path   | Optional YAML config file path.                               |
 | `MEMHOOK_MAX_FILES`            | `5`                                       | int    | Hard cap on number of files injected.                         |
 | `MEMHOOK_MAX_ADDITIONAL_CHARS` | `9500`                                    | int    | Soft cap on injection size (Claude Code stdout cap = 10 000). |
 | `MEMHOOK_MAX_OUTPUT_TOKENS`    | `200`                                     | int    | Provider's `max_tokens`.                                      |
@@ -839,21 +865,28 @@ Proper nouns (Anthropic, Haiku, OpenAI) keep their case.
 
 ## 21. Quality gates
 
-| Gate               | Tool                                          | Trigger                         | Enforced where |
-| ------------------ | --------------------------------------------- | ------------------------------- | -------------- |
-| Format             | prettier                                      | `pre-commit` (lint-staged) + CI | both           |
-| Lint               | eslint flat config + typescript-eslint strict | `pre-commit` + CI               | both           |
-| Typecheck          | `tsc --noEmit`                                | CI                              | CI             |
-| Test               | vitest                                        | CI on every push/PR             | CI             |
-| Commit format      | commitlint                                    | `commit-msg` (husky)            | local          |
-| PR title format    | commitlint via Action (v0.2)                  | PR sync                         | CI             |
-| Security scan      | CodeQL                                        | weekly + push/PR                | CI             |
-| Supply chain       | Dependabot                                    | weekly                          | bot PRs        |
-| Fail-soft contract | `failsoft-auditor` agent                      | manual on router/CLI PRs        | dev            |
+| Gate               | Tool                                                    | Trigger                         | Enforced where |
+| ------------------ | ------------------------------------------------------- | ------------------------------- | -------------- |
+| Format             | prettier                                                | `pre-commit` (lint-staged) + CI | both           |
+| Lint               | eslint flat config + typescript-eslint strict           | `pre-commit` + CI               | both           |
+| Typecheck          | `tsc --noEmit`                                          | CI                              | CI             |
+| Test               | vitest                                                  | CI on every push/PR             | CI             |
+| Commit format      | commitlint                                              | `commit-msg` (husky)            | local          |
+| PR title format    | squash-merge: PR title = the commit (commitlint, local) | commit-msg                      | local          |
+| Security scan      | CodeQL                                                  | weekly + push/PR                | CI             |
+| Supply chain       | Dependabot                                              | weekly                          | bot PRs        |
+| Fail-soft contract | `failsoft-auditor` agent                                | manual on router/CLI PRs        | dev            |
 
 ---
 
 ## 22. Roadmap
+
+> **Shipped as of `0.2.2`:** v0.1.x, plus **v0.2.0** (OpenAI + Ollama
+> providers, YAML config). **npm publish is already live and automated**
+> (Trusted Publishing / OIDC) — it landed in v0.2, ahead of its roadmap slot.
+> The `docs/PROVIDERS.md` / `docs/CONFIG.md` / `docs/BENCH.md` files the v0.2
+> row once promised were **not** created. The rows below are the original
+> plan, kept for historical intent.
 
 | Version              | Scope                                                                                                                                                                                                                            | Target             |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
@@ -911,20 +944,28 @@ quarterly review issue, don't quietly push out dates in this file.
 Each row is a one-line decision with a date and a rationale link. Edits
 to this section are append-only — past decisions don't get rewritten.
 
-| ID  | Date       | Decision                                                       | Rationale                                                                                                                                                                                                                                                    |
-| --- | ---------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| D1  | 2026-06-01 | Renamed `memflow` → `memhook`                                  | npm + GitHub squatters + Rust forensics SEO collision. See [audit §3](private/MEMORY-GUARD-PLAN-AUDIT-2026-06-01.md#3-differentiator-vs-oss-comparables) (private).                                                                                          |
-| D2  | 2026-06-01 | `MEMHOOK_MAX_ADDITIONAL_CHARS` default 9 500 (was 32 000)      | Claude Code stdout cap = 10 000 chars; beyond that, spill-to-file silently. See [audit §1 F1](private/MEMORY-GUARD-PLAN-AUDIT-2026-06-01.md#1-factual-freshness--claims-vs-réalité-2026) (private).                                                          |
-| D3  | 2026-06-01 | Removed `anthropic-beta: extended-cache-ttl-2025-04-11` header | 1 h TTL is GA in 2026; the beta header is obsolete.                                                                                                                                                                                                          |
-| D4  | 2026-06-01 | macOS + Linux only; Windows explicitly dropped                 | No Windows runner; POSIX assumed throughout.                                                                                                                                                                                                                 |
-| D5  | 2026-06-01 | TUI demoted from v0.1.5 to v0.4                                | 18 MB / 40 transitive deps for Ink not justified before adoption. CLI + `--json` first.                                                                                                                                                                      |
-| D6  | 2026-06-01 | Removed `@file` streaming claim                                | No Anthropic documentation guarantees `@file` resolution inside `additionalContext` injected by a hook.                                                                                                                                                      |
-| D7  | 2026-06-01 | Default model alias `claude-haiku-4-5` (un-snapshotted)        | Avoids 404 if Anthropic retires a dated snapshot.                                                                                                                                                                                                            |
-| D8  | 2026-06-01 | `MEMHOOK_LOG_PATH` field schema frozen                         | Renaming a field requires a major version bump.                                                                                                                                                                                                              |
-| D9  | 2026-06-01 | npm publish gated to v0.1.0 (not preview.0)                    | Preview tag is for installs-from-source; publish only when the install one-liner is honest.                                                                                                                                                                  |
-| D10 | 2026-06-01 | Bench grown from 9 to 50 prompts at v0.1.0                     | Stat power too low at n=9 for CI reproducibility.                                                                                                                                                                                                            |
-| D11 | 2026-06-01 | Reversed D4 — Windows re-added as a supported OS               | GitHub Actions is free for public repos, so the CI-credit + runner constraint behind D4 no longer applies. memhook is a dependency-free Node CLI; only `cwdToSlug` needed backslash-normalisation. CI runs Linux + macOS + Windows on github-hosted runners. |
+| ID  | Date       | Decision                                                               | Rationale                                                                                                                                                                                                                                                    |
+| --- | ---------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| D1  | 2026-06-01 | Renamed `memflow` → `memhook`                                          | npm + GitHub squatters + Rust forensics SEO collision. See [audit §3](private/MEMORY-GUARD-PLAN-AUDIT-2026-06-01.md#3-differentiator-vs-oss-comparables) (private).                                                                                          |
+| D2  | 2026-06-01 | `MEMHOOK_MAX_ADDITIONAL_CHARS` default 9 500 (was 32 000)              | Claude Code stdout cap = 10 000 chars; beyond that, spill-to-file silently. See [audit §1 F1](private/MEMORY-GUARD-PLAN-AUDIT-2026-06-01.md#1-factual-freshness--claims-vs-réalité-2026) (private).                                                          |
+| D3  | 2026-06-01 | Removed `anthropic-beta: extended-cache-ttl-2025-04-11` header         | 1 h TTL is GA in 2026; the beta header is obsolete.                                                                                                                                                                                                          |
+| D4  | 2026-06-01 | macOS + Linux only; Windows explicitly dropped                         | No Windows runner; POSIX assumed throughout.                                                                                                                                                                                                                 |
+| D5  | 2026-06-01 | TUI demoted from v0.1.5 to v0.4                                        | 18 MB / 40 transitive deps for Ink not justified before adoption. CLI + `--json` first.                                                                                                                                                                      |
+| D6  | 2026-06-01 | Removed `@file` streaming claim                                        | No Anthropic documentation guarantees `@file` resolution inside `additionalContext` injected by a hook.                                                                                                                                                      |
+| D7  | 2026-06-01 | Default model alias `claude-haiku-4-5` (un-snapshotted)                | Avoids 404 if Anthropic retires a dated snapshot.                                                                                                                                                                                                            |
+| D8  | 2026-06-01 | `MEMHOOK_LOG_PATH` field schema frozen                                 | Renaming a field requires a major version bump.                                                                                                                                                                                                              |
+| D9  | 2026-06-01 | npm publish gated to v0.1.0 (not preview.0)                            | Preview tag is for installs-from-source; publish only when the install one-liner is honest.                                                                                                                                                                  |
+| D10 | 2026-06-01 | Bench grown from 9 to 50 prompts at v0.1.0                             | Stat power too low at n=9 for CI reproducibility.                                                                                                                                                                                                            |
+| D11 | 2026-06-01 | Reversed D4 — Windows re-added as a supported OS                       | GitHub Actions is free for public repos, so the CI-credit + runner constraint behind D4 no longer applies. memhook is a dependency-free Node CLI; only `cwdToSlug` needed backslash-normalisation. CI runs Linux + macOS + Windows on github-hosted runners. |
+| D12 | 2026-06-02 | OpenAI + Ollama providers + YAML config shipped (v0.2.0)               | Multi-provider via `createProvider` factory; YAML opt-in, env > yaml > default.                                                                                                                                                                              |
+| D13 | 2026-06-02 | Dropped committed lockfile (`9fb393f`); CI + publish use `npm install` | Avoided an npm cross-platform optional-dep bug.                                                                                                                                                                                                              |
+| D14 | 2026-06-02 | npm publish automated via Trusted Publishing (OIDC) + `--provenance`   | Supersedes D9's manual plan; no `NPM_TOKEN`, signed provenance.                                                                                                                                                                                              |
+| D15 | 2026-06-02 | release-please-action bumped v4 → v5                                   | Stay on the maintained major.                                                                                                                                                                                                                                |
+| D16 | 2026-06-02 | Dropped the `-preview` suffix; plain `0.x` tags                        | `0.x` already signals an unstable API (SemVer §4); `-preview` was redundant.                                                                                                                                                                                 |
+| D17 | 2026-06-02 | Added `provider_init_failed` status                                    | `createProvider()` throws are caught + logged, preserving fail-soft.                                                                                                                                                                                         |
+| D18 | 2026-06-02 | Cache key gains a `provider` (`type:model`) component                  | Switching provider/model must never serve a stale selection.                                                                                                                                                                                                 |
+| D19 | 2026-06-02 | Added runtime dep `yaml` (was zero-dep)                                | YAML config loader; `yaml` has zero sub-deps.                                                                                                                                                                                                                |
 
 ---
 
-_End of specification. Total ~620 lines, frozen 2026-06-01._
+_End of specification. First frozen 2026-06-01; refreshed for v0.2 on 2026-06-02._

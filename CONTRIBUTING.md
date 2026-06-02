@@ -1,6 +1,6 @@
 # Contributing to memhook
 
-memhook is an early-stage tool (v0.1 preview). Contributions are welcome,
+memhook is an early-stage tool (currently 0.2.x, pre-1.0). Contributions are welcome,
 but please open an issue first to discuss substantial changes.
 
 By participating you agree to abide by our

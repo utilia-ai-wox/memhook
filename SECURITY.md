@@ -2,14 +2,14 @@
 
 ## Supported versions
 
-memhook is in `0.x` preview. Only the latest minor version receives
+memhook is in `0.x` (pre-1.0). Only the latest minor version receives
 security fixes. Once memhook reaches `1.0.0`, this policy will be
 updated to clarify the support window for previous minors.
 
-| Version           | Supported               |
-| ----------------- | ----------------------- |
-| `0.1.x-preview.*` | ✅ active               |
-| older             | ❌ no longer maintained |
+| Version | Supported               |
+| ------- | ----------------------- |
+| `0.2.x` | ✅ active               |
+| older   | ❌ no longer maintained |
 
 ## Reporting a vulnerability
 

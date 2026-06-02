@@ -30,7 +30,11 @@ under `src/router.ts`, `src/cache.ts`, `src/providers/`, or `bin/`.
 3. Invoke the hook with stdin JSON `{"prompt": "smoke", "cwd": "/tmp"}`
    and these env overrides:
    - `MEMHOOK_ENABLED=true`
-   - `ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY` (must be set in caller env)
+   - `MEMHOOK_PROVIDER=anthropic` (the canned run exercises the default provider)
+   - `ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY` (must be set in caller env). The
+     key gate is provider-aware: `MEMHOOK_PROVIDER=ollama` needs **no** key,
+     `openai` needs `OPENAI_API_KEY`. The provider/key logic lives in
+     `src/config.ts` + `src/providers/factory.ts` — also worth a smoke run.
    - `MEMHOOK_CATALOG_PATH=<sandbox>/catalog.txt`
    - `MEMHOOK_CACHE_DIR=<sandbox>/cache`
    - `MEMHOOK_LOG_PATH=<sandbox>/log.jsonl`
@@ -52,5 +56,6 @@ under `src/router.ts`, `src/cache.ts`, `src/providers/`, or `bin/`.
 
 - Any non-zero exit code from `memhook run`.
 - stdout that isn't valid JSON, or that's missing `hookSpecificOutput`.
-- `status` field set to anything starting with `api_no_*` or `parse_invalid`
-  **without** also producing a fail-soft empty `additionalContext`.
+- `status` field set to anything starting with `api_no_*`, or set to
+  `parse_invalid` or `provider_init_failed` **without** also producing a
+  fail-soft empty `additionalContext`.
