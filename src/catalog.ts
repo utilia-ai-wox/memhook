@@ -1,8 +1,11 @@
 /**
  * Memhook catalog builder — TS port of build-memory-catalog.sh.
  *
- * Discovers feedbacks & projects in `~/.claude/projects/* /memory/`, global
- * rules in `~/.claude/rules/`, and project rules in `<cwd>/.claude/rules/`.
+ * Discovers feedbacks & projects in `~/.claude/projects/* /memory/`. Global
+ * rules (`~/.claude/rules/`) and project rules (`<cwd>/.claude/rules/`) are
+ * host-autoloaded and included ONLY when `resurfaceHostLoaded` is set (default
+ * off), so memhook does not re-catalogue what Claude Code already loads at
+ * launch.
  *
  * Phase 0.5 Q4: title-only for non-CWD zones (~50% catalog size reduction).
  * The CWD zone gets full `basename: description`; others list just basenames.
@@ -24,6 +27,14 @@ export interface CatalogBuildOptions {
   projectsRoot?: string;
   globalRulesDir?: string;
   outputPath: string;
+  /**
+   * Include the host-autoloaded rule zones (`~/.claude/rules`,
+   * `<cwd>/.claude/rules`) in the catalog. Default `false`: those files are
+   * loaded in full by Claude Code at launch, so cataloguing them would let the
+   * router re-inject what the host already has (double-injection). See
+   * `MemhookConfig.resurfaceHostLoaded`.
+   */
+  resurfaceHostLoaded?: boolean;
 }
 
 interface MemoryDir {
@@ -45,14 +56,22 @@ export function buildCatalog(opts: CatalogBuildOptions): {
   const sections: string[] = [];
   sections.push(emitMemorySection("feedback", "MEMORY FEEDBACKS", memoryDirs));
   sections.push(emitMemorySection("project", "MEMORY PROJECTS", memoryDirs));
-  sections.push(emitRulesSection("GLOBAL RULES", globalRulesDir, true));
-  sections.push(
-    emitRulesSection(
-      `PROJECT RULES (${pathBasename(opts.cwd)})`,
-      join(opts.cwd, ".claude", "rules"),
-      true,
-    ),
-  );
+  // Global + project rules are host-autoloaded: Claude Code reads
+  // `~/.claude/rules/*.md` and `<cwd>/.claude/rules/*.md` in full at launch. By
+  // default memhook leaves them OUT of the catalog so the router never re-routes
+  // what the host already loaded (no double-injection — it routes only the
+  // not-autoloaded `feedback_*/project_*` memory). `resurfaceHostLoaded` adds
+  // them back for positional re-surfacing (long sessions / no-drift projects).
+  if (opts.resurfaceHostLoaded) {
+    sections.push(emitRulesSection("GLOBAL RULES", globalRulesDir, true));
+    sections.push(
+      emitRulesSection(
+        `PROJECT RULES (${pathBasename(opts.cwd)})`,
+        join(opts.cwd, ".claude", "rules"),
+        true,
+      ),
+    );
+  }
 
   const content = sections.join("\n");
   const tmp = `${opts.outputPath}.tmp.${process.pid}`;

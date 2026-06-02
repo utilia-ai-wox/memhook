@@ -95,6 +95,7 @@ function cmdBuildCatalog(): void {
   const result = buildCatalog({
     cwd: process.cwd(),
     outputPath: config.catalog.path,
+    resurfaceHostLoaded: config.resurfaceHostLoaded,
   });
   process.stderr.write(
     `[memhook build-catalog] ${config.catalog.path} — ${result.lines}L, ${result.bytes}B\n`,
@@ -306,6 +307,10 @@ ENV VARS
   MEMHOOK_TIMEOUT_MS              request timeout (default: 8000; ollama: 30000)
   MEMHOOK_DISABLE_CACHE=true      skip local LRU cache
   MEMHOOK_DISABLE_PREFILTER=true  skip trivial-prompt skip
+  MEMHOOK_RESURFACE_HOST_LOADED   route rules the host already auto-loads at
+                                  launch (default: false). Enable for long
+                                  sessions / no-drift projects (re-surfaces
+                                  launch-loaded rules near the prompt).
   MEMHOOK_CURATE_NUDGE            /curate-nudge toggle (default: true)
   MEMHOOK_CURATE_NUDGE_TOKENS     catalog-token threshold to nudge (default: 15000)
   MEMHOOK_CURATE_NUDGE_FILES      memory-file-count threshold to nudge (default: 250)

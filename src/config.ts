@@ -58,6 +58,24 @@ export interface MemhookConfig {
     path: string;
   };
   searchDirs: string[];
+  /**
+   * Whether to route memory the HOST already auto-loads at launch. Claude Code
+   * loads `~/.claude/rules/*.md` and `<cwd>/.claude/rules/*.md` in full at
+   * startup, so routing them again is positional re-surfacing, not new recall.
+   *
+   * OFF by default (the clean public behaviour): the catalog omits those
+   * host-autoloaded rule zones, so memhook routes only memory the host does NOT
+   * load (the `feedback_` / `project_` zones) — no double-injection. Measured: on
+   * a real 4.8k-prompt corpus, ~20% of injecting prompts re-injected a rule the
+   * host had already loaded in full (docs/private POC, 2026-06-02).
+   *
+   * Turn ON (`MEMHOOK_RESURFACE_HOST_LOADED=true`) for **long sessions / long
+   * context** — launch-loaded rules drift far from the current prompt, so
+   * re-surfacing the relevant ones near it restores their salience — or a
+   * **complex project that tolerates no drift**, where the redundant re-injection
+   * is a deliberate guard-rail.
+   */
+  resurfaceHostLoaded: boolean;
   logging: {
     jsonlPath: string;
   };
@@ -256,6 +274,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): MemhookConfig 
         join(home, ".claude", "rules"),
       ),
     ],
+    resurfaceHostLoaded: bool("MEMHOOK_RESURFACE_HOST_LOADED", yaml?.resurfaceHostLoaded, false),
     logging: {
       jsonlPath: str(
         "MEMHOOK_LOG_PATH",

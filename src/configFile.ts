@@ -51,6 +51,7 @@ export interface RawConfigFile {
     projectsRoot?: string;
     globalRulesDir?: string;
   };
+  resurfaceHostLoaded?: boolean;
   logging?: {
     jsonlPath?: string;
   };
