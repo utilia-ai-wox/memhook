@@ -96,6 +96,7 @@ function cmdBuildCatalog(): void {
     cwd: process.cwd(),
     outputPath: config.catalog.path,
     resurfaceHostLoaded: config.resurfaceHostLoaded,
+    customSources: config.customSources,
   });
   process.stderr.write(
     `[memhook build-catalog] ${config.catalog.path} — ${result.lines}L, ${result.bytes}B\n`,

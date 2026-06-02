@@ -21,6 +21,7 @@ import {
 } from "node:fs";
 import { join, basename as pathBasename } from "node:path";
 import { homedir } from "node:os";
+import { activeCustomSources, globToRegExp, type CustomSource } from "./sources.js";
 
 export interface CatalogBuildOptions {
   cwd: string;
@@ -35,6 +36,8 @@ export interface CatalogBuildOptions {
    * `MemhookConfig.resurfaceHostLoaded`.
    */
   resurfaceHostLoaded?: boolean;
+  /** Extra `.md` source dirs to catalog alongside the built-in zones. */
+  customSources?: CustomSource[];
 }
 
 interface MemoryDir {
@@ -71,6 +74,12 @@ export function buildCatalog(opts: CatalogBuildOptions): {
         true,
       ),
     );
+  }
+  // User-declared extra sources (cable onto existing project memory). Skipped
+  // when host-autoloaded unless resurfaceHostLoaded — same gate as the rules.
+  const custom = activeCustomSources(opts.customSources ?? [], opts.resurfaceHostLoaded ?? false);
+  if (custom.length > 0) {
+    sections.push(emitCustomSourcesSection(custom));
   }
 
   const content = sections.join("\n");
@@ -159,6 +168,33 @@ function emitRulesSection(label: string, dir: string, isCwdZone: boolean): strin
     count++;
   }
   lines.push(`(${count} entries)`);
+  lines.push("");
+  return lines.join("\n");
+}
+
+function emitCustomSourcesSection(sources: CustomSource[]): string {
+  const lines: string[] = ["=== CUSTOM SOURCES ==="];
+  let total = 0;
+  for (const src of sources) {
+    const re = globToRegExp(src.glob);
+    let entries: string[];
+    try {
+      entries = readdirSync(src.dir);
+    } catch {
+      lines.push(`--- ${src.dir} (directory not found) ---`);
+      continue;
+    }
+    // Only `.md` files can be injected (router SAFE_BASENAME_RE), so the catalog
+    // lists only those — a glob like `*.txt` simply yields nothing.
+    const files = entries.filter((e) => e.endsWith(".md") && re.test(e)).sort();
+    if (files.length === 0) continue;
+    lines.push(`--- ${src.dir} ---`);
+    for (const f of files) {
+      lines.push(`${f}: ${extractDescription(join(src.dir, f))}`);
+    }
+    total += files.length;
+  }
+  lines.push(`(${total} entries)`);
   lines.push("");
   return lines.join("\n");
 }

@@ -35,6 +35,7 @@ import { LocalCache } from "./cache.js";
 import { loadConfig, type MemhookConfig } from "./config.js";
 import { PreFilter } from "./preFilter.js";
 import { createProvider } from "./providers/factory.js";
+import { activeCustomSources } from "./sources.js";
 import { claudeCodeAdapter } from "./adapters/claudeCode.js";
 import type { HarnessAdapter, HarnessInput, RouteResult } from "./adapters/types.js";
 
@@ -350,11 +351,16 @@ interface ReadSelectedResult {
 }
 
 function readSelected(basenames: string[], cwd: string, config: MemhookConfig): ReadSelectedResult {
-  // Build search dirs: ~/.claude/projects/*/memory + global rules + cwd rules.
+  // Build search dirs: ~/.claude/projects/*/memory + global rules + cwd rules +
+  // any user-declared custom sources (host-autoloaded ones only when resurfacing,
+  // mirroring the catalog so the router never finds what the catalog omitted).
   const projectDirs = listProjectsMemoryDirs(config.searchDirs[0]);
   const rulesDir = config.searchDirs[1];
   const cwdRulesDir = join(cwd, ".claude", "rules");
-  const dirs = [...projectDirs, rulesDir, cwdRulesDir].filter(
+  const customDirs = activeCustomSources(config.customSources, config.resurfaceHostLoaded).map(
+    (s) => s.dir,
+  );
+  const dirs = [...projectDirs, rulesDir, cwdRulesDir, ...customDirs].filter(
     (d): d is string => typeof d === "string" && d.length > 0,
   );
 
