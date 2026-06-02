@@ -2,7 +2,7 @@
 
 # memhook
 
-**Stop loading every memory file on every prompt. memhook routes only the relevant ones.**
+**Stop telling Claude to check its memory. memhook auto-injects the notes relevant to each prompt — so it already knows what you told it.**
 
 <p align="center">
   <a href="https://www.npmjs.com/package/memhook"><img src="https://img.shields.io/npm/v/memhook?color=cb3837&logo=npm" alt="npm version"></a>
@@ -14,17 +14,19 @@
 </p>
 
 A semantic memory router for [Claude Code](https://claude.com/claude-code) — a
-`UserPromptSubmit` hook that picks the relevant `feedback_*.md` & `rule_*.md`
-files for each prompt and injects them as `additionalContext`.
+`UserPromptSubmit` hook that picks the `feedback_*.md` & `rule_*.md` notes relevant
+to _this_ prompt and injects them as `additionalContext`. Your memory gets consulted
+automatically — you stop saying _"go read your memory."_
 
 </div>
 
 ## ✨ Features
 
-- 🎯 **Relevant-only injection** — a cheap model picks the 0–5 memory files that matter for _this_ prompt.
-- 💸 **Token-frugal** — skips the 10–14k-token catalog dump; injects ~2k tokens of signal.
+- 🎯 **Right note, right moment** — auto-selects the 0–5 memory files relevant to _this_ prompt and injects them. No more "go read your memory."
+- 🧠 **Gets better as your memory grows** — relevance is picked per prompt, so a large memory helps instead of drowning the model.
 - 🛡️ **Fail-soft** — never blocks Claude Code; every error path falls back to empty context.
 - 🔌 **Multi-provider** — Anthropic (default), OpenAI, or local Ollama. Your key, your endpoint.
+- 💸 **Light on context** — injects ~2k tokens of signal instead of a 10–14k-token catalog dump.
 - 🤫 **Zero telemetry** — the only outbound call is the LLM endpoint _you_ chose.
 - 🪶 **One dependency** — `yaml`, with zero sub-deps.
 - ⚡ **Cached & pre-filtered** — an LRU cache + a trivial-prompt skip keep latency near zero.
@@ -35,17 +37,19 @@ files for each prompt and injects them as `additionalContext`.
 
 Claude Code's `~/.claude/` directory accumulates a growing set of
 `feedback_*.md` (behavioural corrections) and `rule_*.md` (project doctrine)
-files. Loading all of them on every prompt is wasteful — most of it is
-irrelevant to the question at hand.
+files. The problem isn't their size — it's that Claude doesn't know what's in
+there: it misses notes that apply, so you keep telling it _"you wrote that
+down, go read it."_
 
-memhook uses a cheap router model (**Haiku 4.5** by default) to match each
-prompt against a one-line catalog of all your memory files, and injects only
-the most relevant ones. The rest sit on disk, invisible until they matter.
+memhook removes that chore. A cheap router model (**Haiku 4.5** by default)
+matches each prompt against a one-line catalog of all your memory files and
+injects just the relevant ones — so the right note is already in context,
+automatically. The rest sit on disk, invisible until they matter.
 
-| Approach              | Tokens / prompt | Relevance         |
-| --------------------- | --------------- | ----------------- |
-| Load all memory files | 10–14k          | mostly irrelevant |
-| **memhook**           | ~2k             | only what matches |
+| Approach              | What Claude sees                | Tokens / prompt |
+| --------------------- | ------------------------------- | --------------- |
+| Load all memory files | mostly irrelevant noise         | 10–14k          |
+| **memhook**           | only what matches _this_ prompt | ~2k             |
 
 ## 🚀 Quick start
 
@@ -282,7 +286,7 @@ non-negotiable; the [`failsoft-auditor`](.claude/agents/failsoft-auditor.md)
 agent guards it on every PR.
 
 > [!TIP]
-> ⭐ If memhook saves you tokens, **star the repo** — it helps other Claude Code users find it.
+> ⭐ If memhook keeps Claude on-context without the "go read your memory" nudges, **star the repo** — it helps other Claude Code users find it.
 
 ## License
 
