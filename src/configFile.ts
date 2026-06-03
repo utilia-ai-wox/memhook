@@ -65,6 +65,10 @@ export interface RawConfigFile {
     thresholdFiles?: number;
     cooldownDays?: number;
   };
+  presetsNudge?: {
+    enabled?: boolean;
+    cooldownDays?: number;
+  };
 }
 
 export function resolveConfigPath(env: NodeJS.ProcessEnv): string {

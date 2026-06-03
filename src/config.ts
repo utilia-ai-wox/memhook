@@ -105,6 +105,19 @@ export interface MemhookConfig {
     thresholdFiles: number;
     cooldownDays: number;
   };
+  /**
+   * Optional proactive nudge: when a known host's memory directory exists in the
+   * project but no matching `presets:` entry routes it yet, the router attaches a
+   * one-line `systemMessage` suggesting `memhook presets detect`. Local-only (a
+   * readdir per preset dir, gated behind the cooldown), best-effort (never
+   * affects fail-soft), and always opt-in — it only points at the explicit
+   * `presets:` config, never auto-routes. See `maybePresetsNudge` in
+   * `src/router.ts`.
+   */
+  presetsNudge: {
+    enabled: boolean;
+    cooldownDays: number;
+  };
   scriptVersion: string;
 }
 
@@ -308,6 +321,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): MemhookConfig 
       ),
       thresholdFiles: num("MEMHOOK_CURATE_NUDGE_FILES", yaml?.curateNudge?.thresholdFiles, 250),
       cooldownDays: num("MEMHOOK_CURATE_NUDGE_COOLDOWN_DAYS", yaml?.curateNudge?.cooldownDays, 7),
+    },
+    presetsNudge: {
+      enabled: bool("MEMHOOK_PRESETS_NUDGE", yaml?.presetsNudge?.enabled, true),
+      cooldownDays: num("MEMHOOK_PRESETS_NUDGE_COOLDOWN_DAYS", yaml?.presetsNudge?.cooldownDays, 7),
     },
     scriptVersion: MEMHOOK_VERSION,
   };
