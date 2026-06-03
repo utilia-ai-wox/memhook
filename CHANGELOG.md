@@ -5,6 +5,24 @@ All notable changes to memhook are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0](https://github.com/utilia-ai-wox/memhook/compare/v0.4.1...v0.5.0) (2026-06-03)
+
+
+### Features
+
+* **catalog:** add built-in host presets ([#41](https://github.com/utilia-ai-wox/memhook/issues/41)) ([596aa11](https://github.com/utilia-ai-wox/memhook/commit/596aa112e691bd94348e0883f12f09950bbe1f99))
+* **catalog:** add custom memory sources ([#40](https://github.com/utilia-ai-wox/memhook/issues/40)) ([fde6507](https://github.com/utilia-ai-wox/memhook/commit/fde6507741f89286c20c31d143cc78eb0f5aff0a))
+* **catalog:** add preset discovery command (presets list/detect) ([#42](https://github.com/utilia-ai-wox/memhook/issues/42)) ([9ce7c1c](https://github.com/utilia-ai-wox/memhook/commit/9ce7c1cb7903c5a7cce204dfdec5809bd1f98b09))
+* **catalog:** add presets:[auto] zero-config preset routing ([#44](https://github.com/utilia-ai-wox/memhook/issues/44)) ([9b6f50a](https://github.com/utilia-ai-wox/memhook/commit/9b6f50ad6eeb1576b4e4da3c0542aeac6589dbd1))
+* **catalog:** omit host-autoloaded rule zones by default ([#39](https://github.com/utilia-ai-wox/memhook/issues/39)) ([0b6dee0](https://github.com/utilia-ai-wox/memhook/commit/0b6dee0a274e497c20070cdea22ecee87e6187ba))
+* **router:** add presets nudge for unrouted host memory ([#43](https://github.com/utilia-ai-wox/memhook/issues/43)) ([f76d159](https://github.com/utilia-ai-wox/memhook/commit/f76d159411e0b65d4c7fcfcfb40bad064700df6a))
+* **router:** introduce a harness-adapter seam with Claude Code as adapter [#1](https://github.com/utilia-ai-wox/memhook/issues/1) ([#38](https://github.com/utilia-ai-wox/memhook/issues/38)) ([cebe646](https://github.com/utilia-ai-wox/memhook/commit/cebe646868ca2f502ffeabe9abf9f9ddc97753a3))
+
+
+### Documentation
+
+* clarify the README value proposition ([#36](https://github.com/utilia-ai-wox/memhook/issues/36)) ([f663237](https://github.com/utilia-ai-wox/memhook/commit/f663237de7cd3727db7715faf36309fc83a77fcd))
+
 ## [0.4.1](https://github.com/utilia-ai-wox/memhook/compare/v0.4.0...v0.4.1) (2026-06-02)
 
 
