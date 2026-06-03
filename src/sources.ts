@@ -197,14 +197,27 @@ export const HOST_PRESETS: Record<string, PresetDef> = {
 /** All known preset names. */
 export const PRESET_NAMES: string[] = Object.keys(HOST_PRESETS);
 
+/**
+ * Special `presets:` token: instead of naming presets, the user opts in once and
+ * memhook routes every preset it detects on disk. Explicit opt-in (never the
+ * default), so the cardinal opt-in design (D31/D32) holds; the routed presets are
+ * still experimental (§24). See `resolveActivePresetNames`.
+ */
+export const PRESET_AUTO = "auto";
+
 export function isPresetName(name: string): boolean {
   return Object.prototype.hasOwnProperty.call(HOST_PRESETS, name);
 }
 
-/** Keep only valid, known preset names from untrusted YAML. Never throws. */
+/**
+ * Keep only valid preset entries from untrusted YAML: known names plus the
+ * special `auto` token. Never throws.
+ */
 export function resolvePresetNames(raw: unknown): string[] {
   if (!Array.isArray(raw)) return [];
-  return raw.filter((x): x is string => typeof x === "string" && isPresetName(x));
+  return raw.filter(
+    (x): x is string => typeof x === "string" && (isPresetName(x) || x === PRESET_AUTO),
+  );
 }
 
 /**
@@ -229,17 +242,42 @@ export function expandPresets(names: readonly string[], cwd: string, home: strin
 }
 
 /**
+ * Resolve the effective preset names. Without the `auto` token, this is just the
+ * known names as given. With `auto` (explicit opt-in), it expands to every preset
+ * detected on disk (via `readDir`), unioned with any explicitly-named presets and
+ * de-duplicated. `readDir` is consulted ONLY when `auto` is present, so a config
+ * without `auto` pays zero detection I/O. Pure-of-I/O (the reader is a seam) and
+ * total (`detectPresets` swallows reader errors).
+ */
+export function resolveActivePresetNames(
+  names: readonly string[],
+  cwd: string,
+  home: string,
+  readDir: (dir: string) => string[],
+): string[] {
+  const known = names.filter(isPresetName); // drops `auto` + any unknown token
+  if (!names.includes(PRESET_AUTO)) return known;
+  const detected = detectPresets(cwd, home, readDir)
+    .filter((d) => d.matched)
+    .map((d) => d.name);
+  return [...new Set([...known, ...detected])];
+}
+
+/**
  * The full set of user-declared sources: explicit `customSources` plus the
- * expanded built-in `presets`. The single place catalog + router agree on what
- * "the custom sources" are, so they never diverge.
+ * expanded built-in `presets` (with `auto` resolved to the detected presets via
+ * `readDir`). The single place catalog + router agree on what "the custom
+ * sources" are, so they never diverge — including how `auto` expands.
  */
 export function resolveSources(
   customSources: readonly CustomSource[],
   presets: readonly string[],
   cwd: string,
   home: string,
+  readDir: (dir: string) => string[],
 ): CustomSource[] {
-  return [...customSources, ...expandPresets(presets, cwd, home)];
+  const names = resolveActivePresetNames(presets, cwd, home, readDir);
+  return [...customSources, ...expandPresets(names, cwd, home)];
 }
 
 // ── Preset detection (`memhook presets detect`) ──────────────────────────────

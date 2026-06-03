@@ -37,7 +37,12 @@ import { LocalCache } from "./cache.js";
 import { loadConfig, type MemhookConfig } from "./config.js";
 import { PreFilter } from "./preFilter.js";
 import { createProvider } from "./providers/factory.js";
-import { activeCustomSources, resolveSources, detectPresets } from "./sources.js";
+import {
+  activeCustomSources,
+  resolveSources,
+  resolveActivePresetNames,
+  detectPresets,
+} from "./sources.js";
 import { claudeCodeAdapter } from "./adapters/claudeCode.js";
 import type { HarnessAdapter, HarnessInput, RouteResult } from "./adapters/types.js";
 
@@ -367,7 +372,13 @@ function readSelected(basenames: string[], cwd: string, config: MemhookConfig): 
   const projectDirs = listProjectsMemoryDirs(config.searchDirs[0]);
   const rulesDir = config.searchDirs[1];
   const cwdRulesDir = join(cwd, ".claude", "rules");
-  const allSources = resolveSources(config.customSources, config.presets, cwd, homedir());
+  const allSources = resolveSources(
+    config.customSources,
+    config.presets,
+    cwd,
+    homedir(),
+    readdirSync,
+  );
   const customDirs = activeCustomSources(allSources, config.resurfaceHostLoaded).map((s) => s.dir);
   const dirs = [...projectDirs, rulesDir, cwdRulesDir, ...customDirs].filter(
     (d): d is string => typeof d === "string" && d.length > 0,
@@ -518,14 +529,16 @@ export function maybePresetsNudge(
       return undefined;
     }
     // Suggest a preset only when it has memory on disk that is NOT already routed
-    // — neither by a named `presets:` entry nor by a hand-written `customSources`
-    // dir pointing at the same place (`presets:` is sugar over `customSources`,
-    // D31/D32). Keep a preset only if at least one of its matched dirs is not
-    // already an active source dir.
-    const enabled = new Set(config.presets);
+    // — neither by an effective preset name (named entries AND `presets: [auto]`
+    // expansion, so an `auto` user is never nudged) nor by a hand-written
+    // `customSources` dir pointing at the same place (`presets:` is sugar over
+    // `customSources`, D31/D32). `enabled` keys on the EXPANDED names (not the raw
+    // config) so it suppresses regardless of the `resurfaceHostLoaded` gate, which
+    // would otherwise drop a hostAutoLoaded preset's dirs from `routedDirs`.
+    const enabled = new Set(resolveActivePresetNames(config.presets, cwd, home, readdirSync));
     const routedDirs = new Set(
       activeCustomSources(
-        resolveSources(config.customSources, config.presets, cwd, home),
+        resolveSources(config.customSources, config.presets, cwd, home, readdirSync),
         config.resurfaceHostLoaded,
       ).map((s) => s.dir),
     );
