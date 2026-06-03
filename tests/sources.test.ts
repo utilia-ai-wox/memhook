@@ -8,11 +8,13 @@ import {
   activeCustomSources,
   resolveSources,
   expandPresets,
+  resolveActivePresetNames,
   resolvePresetNames,
   isPresetName,
   detectPresets,
   HOST_PRESETS,
   PRESET_NAMES,
+  PRESET_AUTO,
   type CustomSource,
 } from "../src/sources.js";
 
@@ -150,8 +152,9 @@ describe("host presets", () => {
     }
   });
 
-  it("resolvePresetNames keeps known names, drops unknown / non-strings / non-arrays", () => {
+  it("resolvePresetNames keeps known names + the auto token, drops unknown / non-strings / non-arrays", () => {
     expect(resolvePresetNames(["continue", "nope", 42, "cline"])).toEqual(["continue", "cline"]);
+    expect(resolvePresetNames(["auto", "continue"])).toEqual(["auto", "continue"]);
     expect(resolvePresetNames("continue")).toEqual([]);
     expect(resolvePresetNames(undefined)).toEqual([]);
   });
@@ -177,7 +180,11 @@ describe("host presets", () => {
     const custom: CustomSource[] = [
       { dir: "/x", glob: "*.md", scope: "memory", hostAutoLoaded: false },
     ];
-    const out = resolveSources(custom, ["windsurf"], "/repo", "/home/u");
+    // No `auto`, so readDir is never consulted (a throwing reader proves it).
+    const boom = (): string[] => {
+      throw new Error("readDir must not be called without auto");
+    };
+    const out = resolveSources(custom, ["windsurf"], "/repo", "/home/u", boom);
     expect(out[0]).toEqual(custom[0]);
     expect(out).toContainEqual({
       dir: join("/repo", ".windsurf", "rules"),
@@ -252,5 +259,56 @@ describe("detectPresets", () => {
     };
     expect(() => detectPresets(cwd, home, boom)).not.toThrow();
     expect(detectPresets(cwd, home, boom).every((d) => !d.matched)).toBe(true);
+  });
+});
+
+describe("resolveActivePresetNames (auto)", () => {
+  const cwd = "/repo";
+  const home = "/home/u";
+  const makeReadDir =
+    (fs: Record<string, string[]>) =>
+    (dir: string): string[] => {
+      if (dir in fs) return fs[dir] as string[];
+      throw new Error(`ENOENT: ${dir}`);
+    };
+
+  it("returns the known names unchanged and never reads disk without auto", () => {
+    const boom = (): string[] => {
+      throw new Error("readDir must not be called without auto");
+    };
+    expect(resolveActivePresetNames(["continue", "windsurf"], cwd, home, boom)).toEqual([
+      "continue",
+      "windsurf",
+    ]);
+    // `auto` is the opt-in token (PRESET_AUTO); plain names don't trigger detection.
+    expect(PRESET_AUTO).toBe("auto");
+  });
+
+  it("auto expands to every detected preset, unioned with explicit names, de-duped", () => {
+    const fs = {
+      [join(cwd, ".continue", "rules")]: ["a.md"],
+      [join(cwd, ".windsurf", "rules")]: ["w.md"],
+    };
+    const names = resolveActivePresetNames([PRESET_AUTO, "continue"], cwd, home, makeReadDir(fs));
+    expect(new Set(names)).toEqual(new Set(["continue", "windsurf"]));
+    expect(names.filter((n) => n === "continue")).toHaveLength(1); // de-duped
+    expect(names).not.toContain("auto"); // the token itself is dropped
+  });
+
+  it("auto with no detected preset memory yields no names", () => {
+    expect(resolveActivePresetNames([PRESET_AUTO], cwd, home, makeReadDir({}))).toEqual([]);
+  });
+
+  it("resolveSources expands auto into the detected preset's dirs", () => {
+    const fs = { [join(cwd, ".windsurf", "rules")]: ["w.md"] };
+    const out = resolveSources([], [PRESET_AUTO], cwd, home, makeReadDir(fs));
+    expect(out).toContainEqual({
+      dir: join(cwd, ".windsurf", "rules"),
+      glob: "*.md",
+      scope: "rules",
+      hostAutoLoaded: false,
+    });
+    // A preset with no memory on disk is not pulled in by auto.
+    expect(out.some((s) => s.dir === join(cwd, ".continue", "rules"))).toBe(false);
   });
 });

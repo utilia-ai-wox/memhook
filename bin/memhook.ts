@@ -19,6 +19,7 @@
  */
 
 import { homedir } from "node:os";
+import { readdirSync } from "node:fs";
 import { route } from "../src/router.js";
 import { buildCatalog } from "../src/catalog.js";
 import { loadConfig, type ProviderType } from "../src/config.js";
@@ -104,7 +105,13 @@ function cmdBuildCatalog(): void {
     cwd,
     outputPath: config.catalog.path,
     resurfaceHostLoaded: config.resurfaceHostLoaded,
-    customSources: resolveSources(config.customSources, config.presets, cwd, homedir()),
+    customSources: resolveSources(
+      config.customSources,
+      config.presets,
+      cwd,
+      homedir(),
+      readdirSync,
+    ),
   });
   process.stderr.write(
     `[memhook build-catalog] ${config.catalog.path} — ${result.lines}L, ${result.bytes}B\n`,

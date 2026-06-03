@@ -65,6 +65,18 @@ describe("maybePresetsNudge", () => {
     expect(maybePresetsNudge(config, cwd, home, NOW)).toBeUndefined();
   });
 
+  it("stays silent under presets:[auto] for a hostAutoLoaded preset auto already covers", () => {
+    const { config, cwd, home } = makeCase();
+    // cline is hostAutoLoaded:true, so its dirs are stripped from routedDirs under
+    // the default resurfaceHostLoaded:false — but `auto` still covers it, so the
+    // nudge must suppress via the expanded-name set, not via routedDirs.
+    const dir = join(cwd, ".clinerules");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "rule.md"), "# rule\n");
+    config.presets = ["auto"];
+    expect(maybePresetsNudge(config, cwd, home, NOW)).toBeUndefined();
+  });
+
   it("fires on a home-only match without claiming a project scope", () => {
     const { config, cwd, home } = makeCase();
     // Memory lives in the global home dir, not the project cwd.
