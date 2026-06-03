@@ -42,11 +42,18 @@ import {
   resolveSources,
   resolveActivePresetNames,
   detectPresets,
+  SOURCE_EXTENSIONS,
 } from "./sources.js";
 import { claudeCodeAdapter } from "./adapters/claudeCode.js";
 import type { HarnessAdapter, HarnessInput, RouteResult } from "./adapters/types.js";
 
-const SAFE_BASENAME_RE = /^[A-Za-z0-9._-]+\.md$/;
+// Injection guard: a basename with no path separators (no traversal) ending in
+// an allowed source extension. Built from SOURCE_EXTENSIONS so the guard and the
+// catalog's file filter can never disagree on which extensions are routable.
+// Exported for direct unit testing of the separator/control-char rejection — a
+// load-bearing security property that must survive any future SOURCE_EXTENSIONS
+// change (the guard is now built dynamically, so a regression test pins it).
+export const SAFE_BASENAME_RE = new RegExp(`^[A-Za-z0-9._-]+\\.(${SOURCE_EXTENSIONS.join("|")})$`);
 
 export interface HookInput {
   prompt: string;

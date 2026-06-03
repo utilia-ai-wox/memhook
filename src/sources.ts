@@ -54,15 +54,32 @@ export function globToRegExp(glob: string): RegExp {
 }
 
 /**
- * From a raw directory listing, the `.md` files matching `glob`, sorted. Pure
- * and total. The `.md` gate is intentional and shared with the router's
- * injection guard (`SAFE_BASENAME_RE`): only `.md` can ever be injected, so a
- * glob like `*.txt` yields nothing. The catalog builder and preset detection
- * both filter through this so they can never disagree on what a source matches.
+ * Extensions memhook will catalog + inject from a source directory. This is the
+ * single source of truth, kept in lockstep with the router's injection guard
+ * (`SAFE_BASENAME_RE` is built from it) so the catalog can never list a file the
+ * router would refuse to inject. `md` is the native memhook format; `mdc`
+ * (Cursor) and `txt` (Cline) let presets/customSources cable onto other tools'
+ * atomic rule files. Claude Code's own rule zones stay `.md`-only (catalog.ts).
  */
-export function listMatchingMdFiles(entries: readonly string[], glob: string): string[] {
+export const SOURCE_EXTENSIONS = ["md", "mdc", "txt"] as const;
+
+const SOURCE_EXT_RE = new RegExp(`\\.(${SOURCE_EXTENSIONS.join("|")})$`);
+
+/** Whether a basename ends in an allowed source extension (case-sensitive). */
+export function hasSourceExtension(name: string): boolean {
+  return SOURCE_EXT_RE.test(name);
+}
+
+/**
+ * From a raw directory listing, the allowed-extension files matching `glob`,
+ * sorted. Pure and total. The extension gate is an independent safety floor on
+ * top of the glob (a glob like `*` still only yields the allowed extensions),
+ * mirroring the router's injection guard. The catalog builder and preset
+ * detection both filter through this so they can never disagree on a match.
+ */
+export function listMatchingFiles(entries: readonly string[], glob: string): string[] {
   const re = globToRegExp(glob);
-  return entries.filter((e) => e.endsWith(".md") && re.test(e)).sort();
+  return entries.filter((e) => hasSourceExtension(e) && re.test(e)).sort();
 }
 
 /**
@@ -338,7 +355,7 @@ export function detectPresets(
       } catch {
         entries = null;
       }
-      const files = entries === null ? [] : listMatchingMdFiles(entries, s.glob);
+      const files = entries === null ? [] : listMatchingFiles(entries, s.glob);
       dirs.push({ dir, glob: s.glob, files, exists: entries !== null });
     }
     out.push({

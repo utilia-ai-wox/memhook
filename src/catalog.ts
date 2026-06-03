@@ -21,7 +21,7 @@ import {
 } from "node:fs";
 import { join, basename as pathBasename } from "node:path";
 import { homedir } from "node:os";
-import { activeCustomSources, listMatchingMdFiles, type CustomSource } from "./sources.js";
+import { activeCustomSources, listMatchingFiles, type CustomSource } from "./sources.js";
 
 export interface CatalogBuildOptions {
   cwd: string;
@@ -183,10 +183,10 @@ function emitCustomSourcesSection(sources: CustomSource[]): string {
       lines.push(`--- ${src.dir} (directory not found) ---`);
       continue;
     }
-    // Only `.md` files can be injected (router SAFE_BASENAME_RE), so the catalog
-    // lists only those — a glob like `*.txt` simply yields nothing. Shared with
-    // preset detection via listMatchingMdFiles so the two never disagree.
-    const files = listMatchingMdFiles(entries, src.glob);
+    // Only allowed-extension files can be injected (router SAFE_BASENAME_RE), so
+    // the catalog lists only those. Shared with preset detection via
+    // listMatchingFiles so the two never disagree on what a source matches.
+    const files = listMatchingFiles(entries, src.glob);
     if (files.length === 0) continue;
     lines.push(`--- ${src.dir} ---`);
     for (const f of files) {

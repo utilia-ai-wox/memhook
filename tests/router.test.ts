@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { route } from "../src/router.js";
+import { route, SAFE_BASENAME_RE } from "../src/router.js";
 
 const root = mkdtempSync(join(tmpdir(), "memhook-router-test-"));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
@@ -204,6 +204,55 @@ describe("router", () => {
     expect(result.hookSpecificOutput.additionalContext).toContain("Preset note content Q");
     expect(readFileSync(logPath, "utf8")).toContain('"status":"ok"');
     vi.unstubAllGlobals();
+  });
+
+  it("injects a .mdc file from a custom source (PRE-A: widened extension flows through the guard)", async () => {
+    const customDir = join(root, "cursor-rules");
+    mkdirSync(customDir, { recursive: true });
+    writeFileSync(join(customDir, "style.mdc"), "Cursor rule content MDC");
+    const cfgPath = join(root, "mdc-src.yaml");
+    writeFileSync(cfgPath, `customSources:\n  - dir: ${customDir}\n    glob: "*.mdc"\n`);
+    vi.stubGlobal("fetch", mockFetch('["style.mdc"]'));
+    const result = await route(JSON.stringify({ prompt: "mdc-src", cwd: root }), {
+      ...env,
+      MEMHOOK_CONFIG: cfgPath,
+    });
+    expect(result.hookSpecificOutput.additionalContext).toContain("Cursor rule content MDC");
+    expect(result.hookSpecificOutput.additionalContext).toContain("style.mdc");
+    expect(readFileSync(logPath, "utf8")).toContain('"status":"ok"');
+    vi.unstubAllGlobals();
+  });
+
+  it("still rejects a path-traversal basename after the extension widening (guard intact)", async () => {
+    vi.stubGlobal("fetch", mockFetch('["../feedback_alpha.md"]'));
+    const result = await route(JSON.stringify({ prompt: "traversal", cwd: root }), env);
+    expect(result.hookSpecificOutput.additionalContext).toBe("");
+    expect(readFileSync(logPath, "utf8")).toContain('"status":"all_unfound"');
+    vi.unstubAllGlobals();
+  });
+
+  it("SAFE_BASENAME_RE: accepts clean allowed-extension basenames, rejects separators/control chars/bad ext", () => {
+    // Control chars built from char codes so no literal NUL/newline lands in source.
+    const NL = String.fromCharCode(10);
+    const NUL = String.fromCharCode(0);
+    for (const ok of ["feedback_x.md", "rule.mdc", "note.txt", "a.b-c_1.md"]) {
+      expect(SAFE_BASENAME_RE.test(ok)).toBe(true);
+    }
+    for (const bad of [
+      "../feedback.md", // traversal
+      "a/b.md", // POSIX separator
+      "a\\b.md", // Windows separator
+      `ok.md${NL}`, // trailing newline (guard has no `m` flag)
+      `evil.sh${NL}ok.md`, // smuggled newline
+      `foo${NUL}.md`, // null byte
+      "x.md.sh", // real extension is .sh
+      "script.sh", // disallowed extension
+      "data.json", // disallowed extension
+      "noext", // no extension
+      "", // empty
+    ]) {
+      expect(SAFE_BASENAME_RE.test(bad)).toBe(false);
+    }
   });
 
   it("returns empty + status provider_init_failed when construction throws", async () => {
