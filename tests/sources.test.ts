@@ -3,12 +3,14 @@ import { join } from "node:path";
 import {
   expandHome,
   globToRegExp,
+  listMatchingMdFiles,
   resolveCustomSources,
   activeCustomSources,
   resolveSources,
   expandPresets,
   resolvePresetNames,
   isPresetName,
+  detectPresets,
   HOST_PRESETS,
   PRESET_NAMES,
   type CustomSource,
@@ -42,6 +44,25 @@ describe("globToRegExp", () => {
 
   it("is anchored (no partial match)", () => {
     expect(globToRegExp("note.md").test("xnote.mdx")).toBe(false);
+  });
+});
+
+describe("listMatchingMdFiles", () => {
+  it("keeps glob-matched .md files, drops non-.md, and sorts", () => {
+    const entries = ["b.md", "a.md", "skip.txt", "note.markdown"];
+    expect(listMatchingMdFiles(entries, "*.md")).toEqual(["a.md", "b.md"]);
+  });
+
+  it("applies the glob on top of the .md gate (e.g. *.instructions.md)", () => {
+    const entries = ["x.instructions.md", "readme.md", "y.instructions.md"];
+    expect(listMatchingMdFiles(entries, "*.instructions.md")).toEqual([
+      "x.instructions.md",
+      "y.instructions.md",
+    ]);
+  });
+
+  it("returns [] for an empty listing", () => {
+    expect(listMatchingMdFiles([], "*.md")).toEqual([]);
   });
 });
 
@@ -164,5 +185,72 @@ describe("host presets", () => {
       scope: "rules",
       hostAutoLoaded: false,
     });
+  });
+});
+
+describe("detectPresets", () => {
+  const cwd = "/repo";
+  const home = "/home/u";
+
+  // A fake filesystem keyed by directory; an unknown dir makes readDir throw
+  // (the real readdirSync's ENOENT), which detection must treat as absent.
+  const makeReadDir =
+    (fs: Record<string, string[]>) =>
+    (dir: string): string[] => {
+      if (dir in fs) return fs[dir] as string[];
+      throw new Error(`ENOENT: ${dir}`);
+    };
+
+  it("returns every built-in preset in PRESET_NAMES order", () => {
+    const got = detectPresets(cwd, home, makeReadDir({})).map((d) => d.name);
+    expect(got).toEqual(PRESET_NAMES);
+  });
+
+  it("marks a preset matched when a dir holds ≥1 glob-matched .md, with sorted files", () => {
+    const fs = {
+      [join(cwd, ".continue", "rules")]: ["b.md", "a.md", "skip.txt"],
+      [join(home, ".continue", "rules")]: ["g.md"],
+    };
+    const cont = detectPresets(cwd, home, makeReadDir(fs)).find((d) => d.name === "continue");
+    expect(cont?.matched).toBe(true);
+    expect(cont?.experimental).toBe(true);
+    const projectDir = cont?.dirs.find((d) => d.dir === join(cwd, ".continue", "rules"));
+    expect(projectDir).toMatchObject({ files: ["a.md", "b.md"], exists: true });
+    const homeDir = cont?.dirs.find((d) => d.dir === join(home, ".continue", "rules"));
+    expect(homeDir).toMatchObject({ files: ["g.md"], exists: true });
+  });
+
+  it("applies the preset's own glob (copilot *.instructions.md), not a bare *.md", () => {
+    const fs = {
+      [join(cwd, ".github", "instructions")]: ["x.instructions.md", "readme.md"],
+    };
+    const copilot = detectPresets(cwd, home, makeReadDir(fs)).find((d) => d.name === "copilot");
+    expect(copilot?.matched).toBe(true);
+    expect(copilot?.dirs[0]?.files).toEqual(["x.instructions.md"]);
+  });
+
+  it("records a missing/denied dir as exists:false, files:[] (never throws)", () => {
+    const detections = detectPresets(cwd, home, makeReadDir({}));
+    for (const d of detections) {
+      expect(d.matched).toBe(false);
+      for (const dir of d.dirs) {
+        expect(dir).toMatchObject({ exists: false, files: [] });
+      }
+    }
+  });
+
+  it("a present-but-empty dir is exists:true but unmatched", () => {
+    const fs = { [join(cwd, ".windsurf", "rules")]: [] };
+    const windsurf = detectPresets(cwd, home, makeReadDir(fs)).find((d) => d.name === "windsurf");
+    expect(windsurf?.matched).toBe(false);
+    expect(windsurf?.dirs[0]).toMatchObject({ exists: true, files: [] });
+  });
+
+  it("is total even when readDir always throws", () => {
+    const boom = (): string[] => {
+      throw new Error("boom");
+    };
+    expect(() => detectPresets(cwd, home, boom)).not.toThrow();
+    expect(detectPresets(cwd, home, boom).every((d) => !d.matched)).toBe(true);
   });
 });

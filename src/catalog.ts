@@ -21,7 +21,7 @@ import {
 } from "node:fs";
 import { join, basename as pathBasename } from "node:path";
 import { homedir } from "node:os";
-import { activeCustomSources, globToRegExp, type CustomSource } from "./sources.js";
+import { activeCustomSources, listMatchingMdFiles, type CustomSource } from "./sources.js";
 
 export interface CatalogBuildOptions {
   cwd: string;
@@ -176,7 +176,6 @@ function emitCustomSourcesSection(sources: CustomSource[]): string {
   const lines: string[] = ["=== CUSTOM SOURCES ==="];
   let total = 0;
   for (const src of sources) {
-    const re = globToRegExp(src.glob);
     let entries: string[];
     try {
       entries = readdirSync(src.dir);
@@ -185,8 +184,9 @@ function emitCustomSourcesSection(sources: CustomSource[]): string {
       continue;
     }
     // Only `.md` files can be injected (router SAFE_BASENAME_RE), so the catalog
-    // lists only those — a glob like `*.txt` simply yields nothing.
-    const files = entries.filter((e) => e.endsWith(".md") && re.test(e)).sort();
+    // lists only those — a glob like `*.txt` simply yields nothing. Shared with
+    // preset detection via listMatchingMdFiles so the two never disagree.
+    const files = listMatchingMdFiles(entries, src.glob);
     if (files.length === 0) continue;
     lines.push(`--- ${src.dir} ---`);
     for (const f of files) {
