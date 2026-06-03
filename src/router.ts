@@ -32,11 +32,12 @@ import {
 } from "node:fs";
 import { join, dirname, basename } from "node:path";
 import { homedir } from "node:os";
+import { createHash } from "node:crypto";
 import { LocalCache } from "./cache.js";
 import { loadConfig, type MemhookConfig } from "./config.js";
 import { PreFilter } from "./preFilter.js";
 import { createProvider } from "./providers/factory.js";
-import { activeCustomSources, resolveSources } from "./sources.js";
+import { activeCustomSources, resolveSources, detectPresets } from "./sources.js";
 import { claudeCodeAdapter } from "./adapters/claudeCode.js";
 import type { HarnessAdapter, HarnessInput, RouteResult } from "./adapters/types.js";
 
@@ -280,7 +281,15 @@ async function selectMemory(
   // into the host's notice channel (Claude Code: `systemMessage`); a host with
   // no equivalent simply drops it.
   const nudge = maybeCurateNudge(config, catalogContent, Date.now());
-  if (nudge) result.systemMessage = nudge;
+  if (nudge) {
+    result.systemMessage = nudge;
+  } else {
+    // Only one notice channel (`systemMessage`) exists, so the presets nudge is
+    // a fallback: it fires only on a turn the curate nudge did not. Each has its
+    // own long cooldown, so the collision is rare and never produces two notices.
+    const pnudge = maybePresetsNudge(config, cwd, homedir(), Date.now());
+    if (pnudge) result.systemMessage = pnudge;
+  }
   return result;
 }
 
@@ -468,6 +477,66 @@ export function maybeCurateNudge(
     writeNudgeStamp(stampFile, now);
     const tokK = tokensEst >= 10_000 ? Math.round(tokensEst / 1000) : (tokensEst / 1000).toFixed(1);
     return `📚 memhook: memory catalog is large (~${tokK}k tokens, ${fileCount} files). Run /curate to prune duplicate and stale entries.`;
+  } catch {
+    return undefined; // a nudge must never break fail-soft
+  }
+}
+
+/**
+ * Proactive presets nudge. Returns a one-line `systemMessage` when a known
+ * host's memory directory exists in this project (or home) but no `presets:`
+ * entry routes it yet, else undefined. It makes `memhook presets detect` (the
+ * #42 discovery command) self-announcing instead of something the user must know
+ * to run.
+ *
+ * Opt-in is preserved: the nudge only *suggests* the explicit `presets:` config;
+ * it never auto-routes anything (every preset is experimental — see
+ * `docs/SPECIFICATION.md` §24). Local-only and fully wrapped so any failure
+ * yields no nudge (fail-soft is never affected). The cooldown stamp is keyed by
+ * cwd because the presets signal is per-project (unlike the catalog-size signal
+ * behind the `/curate` nudge), so one project firing must not silence another's.
+ * Cost: like the curate nudge, the stamp is written only on a fire, so until one
+ * fires the detection runs per prompt — a few `readdir`s on mostly-absent dirs,
+ * the same order of I/O `readSelected` already does.
+ *
+ * Exported for direct unit testing.
+ */
+export function maybePresetsNudge(
+  config: MemhookConfig,
+  cwd: string,
+  home: string,
+  now: number,
+): string | undefined {
+  try {
+    if (!config.presetsNudge.enabled) return undefined;
+    // Per-project stamp: a global stamp would let the first project hit in a
+    // window silence every other project's (per-cwd) presets signal.
+    const cwdHash = createHash("sha256").update(cwd).digest("hex").slice(0, 12);
+    const stampFile = join(config.cache.dir, `.presets-nudge-${cwdHash}`);
+    const last = readNudgeStamp(stampFile);
+    if (last !== null && now - last < config.presetsNudge.cooldownDays * 86_400_000) {
+      return undefined;
+    }
+    // Suggest a preset only when it has memory on disk that is NOT already routed
+    // — neither by a named `presets:` entry nor by a hand-written `customSources`
+    // dir pointing at the same place (`presets:` is sugar over `customSources`,
+    // D31/D32). Keep a preset only if at least one of its matched dirs is not
+    // already an active source dir.
+    const enabled = new Set(config.presets);
+    const routedDirs = new Set(
+      activeCustomSources(
+        resolveSources(config.customSources, config.presets, cwd, home),
+        config.resurfaceHostLoaded,
+      ).map((s) => s.dir),
+    );
+    const found = detectPresets(cwd, home, readdirSync)
+      .filter((d) => d.matched && !enabled.has(d.name))
+      .filter((d) => d.dirs.some((dir) => dir.files.length > 0 && !routedDirs.has(dir.dir)))
+      .map((d) => d.name);
+    if (found.length === 0) return undefined;
+
+    writeNudgeStamp(stampFile, now);
+    return `🔌 memhook: found ${found.join(", ")} memory not yet routed by memhook. Run \`memhook presets detect\` to enable it.`;
   } catch {
     return undefined; // a nudge must never break fail-soft
   }

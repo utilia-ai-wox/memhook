@@ -341,6 +341,10 @@ ENV VARS
   MEMHOOK_CURATE_NUDGE_TOKENS     catalog-token threshold to nudge (default: 15000)
   MEMHOOK_CURATE_NUDGE_FILES      memory-file-count threshold to nudge (default: 250)
   MEMHOOK_CURATE_NUDGE_COOLDOWN_DAYS  min days between nudges (default: 7)
+  MEMHOOK_PRESETS_NUDGE           presets-nudge toggle (default: true) — suggests
+                                  'memhook presets detect' when a known host's
+                                  memory exists in the project but isn't routed
+  MEMHOOK_PRESETS_NUDGE_COOLDOWN_DAYS  min days between presets nudges (default: 7)
   NO_COLOR / MEMHOOK_NO_COLOR     disable colour in init/tail output
   MEMHOOK_DEBUG=true              print errors to stderr (default: silent fail-soft)
 
