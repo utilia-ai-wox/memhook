@@ -54,6 +54,18 @@ export function globToRegExp(glob: string): RegExp {
 }
 
 /**
+ * From a raw directory listing, the `.md` files matching `glob`, sorted. Pure
+ * and total. The `.md` gate is intentional and shared with the router's
+ * injection guard (`SAFE_BASENAME_RE`): only `.md` can ever be injected, so a
+ * glob like `*.txt` yields nothing. The catalog builder and preset detection
+ * both filter through this so they can never disagree on what a source matches.
+ */
+export function listMatchingMdFiles(entries: readonly string[], glob: string): string[] {
+  const re = globToRegExp(glob);
+  return entries.filter((e) => e.endsWith(".md") && re.test(e)).sort();
+}
+
+/**
  * Resolve untrusted YAML `customSources` into typed `CustomSource[]`. Anything
  * that isn't a usable entry (not an object, missing/blank `dir`) is dropped.
  * Never throws.
@@ -228,4 +240,76 @@ export function resolveSources(
   home: string,
 ): CustomSource[] {
   return [...customSources, ...expandPresets(presets, cwd, home)];
+}
+
+// ── Preset detection (`memhook presets detect`) ──────────────────────────────
+//
+// Discovery layer that makes the presets zero-friction: instead of knowing a
+// preset's name and hand-writing `presets: [continue]`, the user runs `memhook
+// presets detect`, memhook scans each preset's directories, and reports which
+// ones actually hold matching `.md` files (plus the YAML snippet to enable them).
+// The orchestration is pure: the real `readdirSync` is injected as `readDir`, so
+// the whole detection is unit-testable with a fake reader and never throws (a
+// reader error is treated as an absent directory).
+
+/** One resolved preset directory and what it matched. */
+export interface PresetDirMatch {
+  /** Absolute directory the preset points at (cwd/home already resolved). */
+  dir: string;
+  /** The basename glob applied to that directory. */
+  glob: string;
+  /** Matching `.md` basenames (sorted); empty if the dir is absent or has none. */
+  files: string[];
+  /** Whether the directory was readable at all (distinguishes empty from missing). */
+  exists: boolean;
+}
+
+/** Detection result for one built-in preset. */
+export interface PresetDetection {
+  name: string;
+  summary: string;
+  /** Mirrors `PresetDef.experimental` — every built-in preset is experimental. */
+  experimental: true;
+  /** True when at least one of the preset's directories matched ≥1 `.md` file. */
+  matched: boolean;
+  dirs: PresetDirMatch[];
+}
+
+/**
+ * Scan every built-in preset against the filesystem (via the injected `readDir`)
+ * and report which ones hold matching memory. Pure of real I/O (the reader is a
+ * seam) and total: a `readDir` that throws on a missing/denied directory is
+ * caught and recorded as `exists: false`, never propagated. Presets are returned
+ * in `PRESET_NAMES` order so the output is deterministic.
+ */
+export function detectPresets(
+  cwd: string,
+  home: string,
+  readDir: (dir: string) => string[],
+): PresetDetection[] {
+  const out: PresetDetection[] = [];
+  for (const name of PRESET_NAMES) {
+    const def = HOST_PRESETS[name];
+    if (!def) continue;
+    const dirs: PresetDirMatch[] = [];
+    for (const s of def.sources) {
+      const dir = join(s.base === "cwd" ? cwd : home, s.rel);
+      let entries: string[] | null = null;
+      try {
+        entries = readDir(dir);
+      } catch {
+        entries = null;
+      }
+      const files = entries === null ? [] : listMatchingMdFiles(entries, s.glob);
+      dirs.push({ dir, glob: s.glob, files, exists: entries !== null });
+    }
+    out.push({
+      name,
+      summary: def.summary,
+      experimental: def.experimental,
+      matched: dirs.some((d) => d.files.length > 0),
+      dirs,
+    });
+  }
+  return out;
 }

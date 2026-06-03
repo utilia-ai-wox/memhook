@@ -26,11 +26,13 @@ import { resolveSources } from "../src/sources.js";
 import { runInit, runUninstall } from "../src/init.js";
 import { runTail } from "../src/tail.js";
 import { runSkills, type SkillsSubcommand } from "../src/skillsCmd.js";
+import { runPresets, type PresetsSubcommand } from "../src/presetsCmd.js";
 import { isCompanionSkill, type CompanionSkill } from "../src/skills.js";
 import { MEMHOOK_VERSION as VERSION } from "../src/version.js";
 
 const PROVIDERS = ["anthropic", "openai", "ollama"];
 const SKILLS_SUBCOMMANDS = ["install", "uninstall", "list"];
+const PRESETS_SUBCOMMANDS = ["list", "detect"];
 
 async function main(): Promise<void> {
   const cmd = process.argv[2] ?? "help";
@@ -53,6 +55,9 @@ async function main(): Promise<void> {
       break;
     case "skills":
       process.exitCode = await cmdSkills(args);
+      break;
+    case "presets":
+      process.exitCode = cmdPresets(args);
       break;
     case "version":
     case "--version":
@@ -158,6 +163,16 @@ async function cmdSkills(args: string[]): Promise<number> {
   });
 }
 
+function cmdPresets(args: string[]): number {
+  const { positionals } = parseArgs(args, BOOL_PRESETS);
+  const sub = positionals[0] ?? "detect";
+  if (!PRESETS_SUBCOMMANDS.includes(sub)) {
+    process.stderr.write(`memhook presets: unknown subcommand "${sub}" (list | detect)\n`);
+    return 1;
+  }
+  return runPresets({ subcommand: sub as PresetsSubcommand });
+}
+
 async function cmdUninstall(args: string[]): Promise<number> {
   const { flags } = parseArgs(args, BOOL_UNINSTALL);
   return runUninstall({
@@ -193,6 +208,7 @@ const BOOL_INIT = new Set(["yes", "dry-run", "no-catalog", "skills", "no-skills"
 const BOOL_UNINSTALL = new Set(["yes", "dry-run", "purge"]);
 const BOOL_TAIL = new Set(["no-follow"]);
 const BOOL_SKILLS = new Set(["yes", "dry-run", "force"]);
+const BOOL_PRESETS = new Set<string>([]);
 
 const SHORT: Record<string, string> = { "-y": "--yes", "-n": "--lines" };
 
@@ -263,6 +279,7 @@ COMMANDS
   uninstall          Remove memhook's hooks from ~/.claude/settings.json
   tail               Pretty live view of the routing log (status, latency, memories)
   skills             Install/uninstall/list companion skills (/wrap /curate /relay)
+  presets            List/detect built-in per-host source presets (experimental)
   version            Print version
   help               Show this message
 
@@ -297,6 +314,11 @@ skills SUBCOMMANDS
   --force            overwrite a skill that differs from shipped (backs up first)
   --dry-run          print the plan, write nothing
   -y, --yes          non-interactive (accept defaults)
+
+presets SUBCOMMANDS
+  detect             scan this project + home for host memory, print the
+                     'presets: […]' snippet to enable what's found (default)
+  list               show every built-in preset (cline | continue | copilot | windsurf)
 
 ENV VARS
   MEMHOOK_ENABLED                 toggle (default: true)
