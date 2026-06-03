@@ -3,7 +3,9 @@ import { join } from "node:path";
 import {
   expandHome,
   globToRegExp,
-  listMatchingMdFiles,
+  listMatchingFiles,
+  hasSourceExtension,
+  SOURCE_EXTENSIONS,
   resolveCustomSources,
   activeCustomSources,
   resolveSources,
@@ -49,22 +51,43 @@ describe("globToRegExp", () => {
   });
 });
 
-describe("listMatchingMdFiles", () => {
-  it("keeps glob-matched .md files, drops non-.md, and sorts", () => {
-    const entries = ["b.md", "a.md", "skip.txt", "note.markdown"];
-    expect(listMatchingMdFiles(entries, "*.md")).toEqual(["a.md", "b.md"]);
+describe("hasSourceExtension", () => {
+  it("accepts md / mdc / txt, rejects everything else", () => {
+    expect(SOURCE_EXTENSIONS).toEqual(["md", "mdc", "txt"]);
+    for (const ext of SOURCE_EXTENSIONS) expect(hasSourceExtension(`f.${ext}`)).toBe(true);
+    expect(hasSourceExtension("note.markdown")).toBe(false);
+    expect(hasSourceExtension("script.sh")).toBe(false);
+    expect(hasSourceExtension("data.json")).toBe(false);
+    expect(hasSourceExtension("noext")).toBe(false);
+  });
+});
+
+describe("listMatchingFiles", () => {
+  it("keeps glob-matched allowed-extension files, drops others, and sorts", () => {
+    const entries = ["b.md", "a.md", "skip.json", "note.markdown"];
+    expect(listMatchingFiles(entries, "*.md")).toEqual(["a.md", "b.md"]);
   });
 
-  it("applies the glob on top of the .md gate (e.g. *.instructions.md)", () => {
+  it("accepts widened extensions when the glob permits (.mdc, .txt)", () => {
+    expect(listMatchingFiles(["r.mdc", "skip.md"], "*.mdc")).toEqual(["r.mdc"]);
+    expect(listMatchingFiles(["note.txt", "skip.json"], "*.txt")).toEqual(["note.txt"]);
+  });
+
+  it("the extension gate is a floor independent of the glob (a `*` glob still drops non-source files)", () => {
+    const entries = ["a.md", "b.mdc", "c.txt", "evil.sh", "data.json"];
+    expect(listMatchingFiles(entries, "*")).toEqual(["a.md", "b.mdc", "c.txt"]);
+  });
+
+  it("applies the glob on top of the extension gate (e.g. *.instructions.md)", () => {
     const entries = ["x.instructions.md", "readme.md", "y.instructions.md"];
-    expect(listMatchingMdFiles(entries, "*.instructions.md")).toEqual([
+    expect(listMatchingFiles(entries, "*.instructions.md")).toEqual([
       "x.instructions.md",
       "y.instructions.md",
     ]);
   });
 
   it("returns [] for an empty listing", () => {
-    expect(listMatchingMdFiles([], "*.md")).toEqual([]);
+    expect(listMatchingFiles([], "*.md")).toEqual([]);
   });
 });
 
