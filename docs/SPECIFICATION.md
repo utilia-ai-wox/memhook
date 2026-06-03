@@ -6,12 +6,13 @@
 > Changes to this spec happen through dedicated PRs labelled `spec`,
 > never as a side-effect of feature work.
 >
-> **Status**: spec first frozen 2026-06-01, refreshed for v0.4.
-> **Implementation status**: `0.3.0` published on npm (init/uninstall setup +
-> `tail` live monitor). This revision documents **v0.4** — the companion skills
-> (`/wrap`, `/curate`, `/relay`) + the `memhook skills` installer + the
-> `/curate` nudge ([§26](#26-companion-skills-v04)); see
-> [§22 Roadmap](#22-roadmap).
+> **Status**: spec first frozen 2026-06-01, refreshed for v0.5.
+> **Implementation status**: `0.5.0` published on npm. This revision documents the
+> source-registry chantier (D30–D36): the harness-adapter seam; host-autoloaded
+> rule-zone omission by default (`resurfaceHostLoaded`); `customSources`; built-in
+> host `presets` + `presets: [auto]`; `memhook presets list|detect`; the presets
+> nudge; and the widened `.md`/`.mdc`/`.txt` source extensions (on `main`,
+> releasing in v0.6). See [§22 Roadmap](#22-roadmap).
 
 ---
 
@@ -47,16 +48,16 @@
 
 ## 1. Identity
 
-| Field           | Value                                                                                                                                                    |
-| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Name**        | `memhook`                                                                                                                                                |
-| **Tagline**     | Semantic memory router for Claude Code                                                                                                                   |
-| **One-liner**   | A `UserPromptSubmit` hook that asks Haiku to pick 0–5 relevant memory files per user prompt and injects them as `additionalContext`.                     |
-| **License**     | MIT                                                                                                                                                      |
-| **Repository**  | https://github.com/utilia-ai-wox/memhook                                                                                                                 |
-| **npm package** | `memhook` (scope `none`)                                                                                                                                 |
-| **Bin command** | `memhook`                                                                                                                                                |
-| **Status**      | `0.3.0` published on npm; v0.4 (companion skills) in this revision; extracted from a private daily-use hook; API surface may still shift before `1.0.0`. |
+| Field           | Value                                                                                                                                                          |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Name**        | `memhook`                                                                                                                                                      |
+| **Tagline**     | Semantic memory router for Claude Code                                                                                                                         |
+| **One-liner**   | A `UserPromptSubmit` hook that asks Haiku to pick 0–5 relevant memory files per user prompt and injects them as `additionalContext`.                           |
+| **License**     | MIT                                                                                                                                                            |
+| **Repository**  | https://github.com/utilia-ai-wox/memhook                                                                                                                       |
+| **npm package** | `memhook` (scope `none`)                                                                                                                                       |
+| **Bin command** | `memhook`                                                                                                                                                      |
+| **Status**      | `0.5.0` published on npm; the source registry (D30–D36) in this revision; extracted from a private daily-use hook; API surface may still shift before `1.0.0`. |
 
 ### Naming rationale
 
@@ -283,6 +284,8 @@ memhook/
 │   ├── preFilter.ts          — trivial-prompt filter (§8.4)
 │   ├── config.ts             — config resolver, env > yaml > default (§8.6)
 │   ├── configFile.ts         — YAML config loader (fail-soft)
+│   ├── sources.ts            — source registry: customSources/presets/detect (§8.2)
+│   ├── presetsCmd.ts         — `memhook presets list|detect` I/O shell (§9, D33)
 │   ├── version.ts            — MEMHOOK_VERSION (release-please-managed)
 │   ├── ansi.ts               — zero-dep ANSI styler (init/tail; TTY/NO_COLOR aware)
 │   ├── install.ts            — pure settings.json hook merge (init/uninstall core)
@@ -291,6 +294,9 @@ memhook/
 │   ├── backup.ts             — shared backupPath/stampNow (init + skills)
 │   ├── skills.ts             — pure companion-skills plan (install/uninstall/list)
 │   ├── skillsCmd.ts          — `memhook skills` I/O shell + init integration
+│   ├── adapters/
+│   │   ├── claudeCode.ts     — Claude Code harness adapter (#1)
+│   │   └── types.ts          — HarnessAdapter interface (§8.1)
 │   └── providers/
 │       ├── types.ts          — Provider interface (§8.5)
 │       ├── http.ts           — shared postJsonWithRetry transport
@@ -307,20 +313,14 @@ memhook/
 │   ├── curate/{SKILL.md, reference.md}
 │   └── relay/SKILL.md
 │
-├── tests/                    — 106 tests across 13 suites
-│   ├── router.test.ts
-│   ├── cache.test.ts
-│   ├── preFilter.test.ts
-│   ├── config.test.ts
-│   ├── factory.test.ts
-│   ├── openai.test.ts
-│   ├── ollama.test.ts
-│   ├── ansi.test.ts
-│   ├── install.test.ts
-│   ├── init.test.ts
-│   ├── skills.test.ts
-│   ├── curateNudge.test.ts
-│   └── tail.test.ts
+├── tests/                    — 194 tests across 21 suites
+│   ├── router.test.ts        adapters.test.ts     anthropic.test.ts
+│   ├── cache.test.ts         catalog.test.ts      http.test.ts
+│   ├── preFilter.test.ts     hookEntry.test.ts    sources.test.ts
+│   ├── config.test.ts        factory.test.ts      presetsCmd.test.ts
+│   ├── openai.test.ts        ollama.test.ts       presetsNudge.test.ts
+│   ├── ansi.test.ts          install.test.ts      curateNudge.test.ts
+│   └── init.test.ts          skills.test.ts       tail.test.ts
 │
 ├── dist/                     — tsc output, gitignored, built on publish
 │
@@ -594,18 +594,18 @@ reference.
 memhook <command> [options]
 ```
 
-| Command                 | Status | Purpose                                                                                                                                                                                         |
-| ----------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `memhook run`           | v0.1   | Read hook JSON from stdin, emit `additionalContext`.                                                                                                                                            |
-| `memhook build-catalog` | v0.1   | (Re)build `~/.claude/cache/memory-catalog.txt`.                                                                                                                                                 |
-| `memhook version`       | v0.1   | Print `MEMHOOK_VERSION` (`src/version.ts`).                                                                                                                                                     |
-| `memhook help`          | v0.1   | Print this command list + env var reference.                                                                                                                                                    |
-| `memhook init`          | v0.3   | Interactive setup: detect Claude Code paths, write hook to `~/.claude/settings.json` (with backup), validate API key, bootstrap empty memory dirs.                                              |
-| `memhook uninstall`     | v0.3   | Remove hooks from `~/.claude/settings.json` (with backup), prompt for cache + log cleanup.                                                                                                      |
-| `memhook tail`          | v0.3   | Live colourised tail of the JSONL log — time · status · prompt · latency · model + the injected memories, with a cache-rate + p50/p95 summary. Zero-dep ANSI, no TUI framework (see D20).       |
-| `memhook skills`        | v0.4   | `install` / `uninstall` / `list` the bundled companion skills (`/wrap`, `/curate`, `/relay`) under `~/.claude/skills/`. Non-clobbering, backs up edits. See [§26](#26-companion-skills-v04).    |
-| `memhook presets`       | v0.5   | `list` / `detect` the built-in per-host source presets (§8.2, D32–D33). `detect` scans the project + home for preset dirs holding `.md` and prints the `presets: [...]` snippet to enable them. |
-| `memhook bench`         | v0.5   | Run the 50-prompt bench suite against the configured provider; output recall + cost table.                                                                                                      |
+| Command                 | Status  | Purpose                                                                                                                                                                                              |
+| ----------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `memhook run`           | v0.1    | Read hook JSON from stdin, emit `additionalContext`.                                                                                                                                                 |
+| `memhook build-catalog` | v0.1    | (Re)build `~/.claude/cache/memory-catalog.txt`.                                                                                                                                                      |
+| `memhook version`       | v0.1    | Print `MEMHOOK_VERSION` (`src/version.ts`).                                                                                                                                                          |
+| `memhook help`          | v0.1    | Print this command list + env var reference.                                                                                                                                                         |
+| `memhook init`          | v0.3    | Interactive setup: detect Claude Code paths, write hook to `~/.claude/settings.json` (with backup), validate API key, bootstrap empty memory dirs.                                                   |
+| `memhook uninstall`     | v0.3    | Remove hooks from `~/.claude/settings.json` (with backup), prompt for cache + log cleanup.                                                                                                           |
+| `memhook tail`          | v0.3    | Live colourised tail of the JSONL log — time · status · prompt · latency · model + the injected memories, with a cache-rate + p50/p95 summary. Zero-dep ANSI, no TUI framework (see D20).            |
+| `memhook skills`        | v0.4    | `install` / `uninstall` / `list` the bundled companion skills (`/wrap`, `/curate`, `/relay`) under `~/.claude/skills/`. Non-clobbering, backs up edits. See [§26](#26-companion-skills-v04).         |
+| `memhook presets`       | v0.5    | `list` / `detect` the built-in per-host source presets (§8.2, D32–D33). `detect` scans the project + home for preset dirs holding `.md` and prints the `presets: [...]` snippet to enable them.      |
+| `memhook bench`         | planned | _Not yet implemented._ Run the 50-prompt bench suite against the configured provider; output recall + cost table. (0.5.0 shipped the source registry instead; bench remains unscheduled — §18, §22.) |
 
 `memhook run` is the only command that must obey the fail-soft
 contract. The others may exit non-zero on user error.
@@ -835,14 +835,14 @@ for most users.
 
 ## 16. Performance targets
 
-| Metric                          | Target        | Measured 2026-05-28 baseline                                         |
-| ------------------------------- | ------------- | -------------------------------------------------------------------- |
-| Hook latency p50 (cache miss)   | ≤ 2 000 ms    | 1 727 ms (Haiku 4.5)                                                 |
-| Hook latency p95 (cache miss)   | ≤ 3 500 ms    | 2 946 ms                                                             |
-| Hook latency on cache hit       | ≤ 100 ms      | < 50 ms (file read)                                                  |
-| `additional_size_chars` p50     | 5 000 — 9 000 | 13 010 (over cap — must fix to ≤ 9 500)                              |
-| Cache hit ratio over 48 h       | ≥ 10 %        | 1.6 % (caveat: cache key includes prompt, so identical prompts only) |
-| Pre-filter skip ratio over 48 h | 5 — 15 %      | 10.9 %                                                               |
+| Metric                          | Target        | Measured 2026-05-28 baseline                                                                                                    |
+| ------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Hook latency p50 (cache miss)   | ≤ 2 000 ms    | 1 727 ms (Haiku 4.5)                                                                                                            |
+| Hook latency p95 (cache miss)   | ≤ 3 500 ms    | 2 946 ms                                                                                                                        |
+| Hook latency on cache hit       | ≤ 100 ms      | < 50 ms (file read)                                                                                                             |
+| `additional_size_chars` p50     | 5 000 — 9 000 | pre-cap baseline 13 010 (2026-05-28); since resolved by the cap-A1 projection (§8.3) + `MEMHOOK_MAX_ADDITIONAL_CHARS=9500` (D2) |
+| Cache hit ratio over 48 h       | ≥ 10 %        | 1.6 % (caveat: cache key includes prompt, so identical prompts only)                                                            |
+| Pre-filter skip ratio over 48 h | 5 — 15 %      | 10.9 %                                                                                                                          |
 
 When a metric drifts more than 25 % below target over a rolling 14-day
 window, open an issue + investigate. Don't accept silent regression.
@@ -873,10 +873,15 @@ documented in [`docs/PROVIDERS.md`](PROVIDERS.md).
 The bench validates **recall** (does the router pick the right memory
 files?) and **cost** (per provider, per prompt class).
 
-### v0.2 baseline (50-prompt suite)
+### Planned bench suite (50-prompt) — not yet implemented
 
-The current bench v2 (9 prompts) is too small for CI. v0.2 must ship
-a 50-prompt suite stored at `tests/bench/prompts.json`, covering:
+> Forward-looking: as of 0.5.0 there is no `memhook bench` command and no
+> `tests/bench/` directory. The design below is the still-unscheduled target
+> (§22 moves `bench` off the v0.5 slot). The figures/paths here describe the
+> intended suite, not a shipped contract.
+
+The current bench v2 (9 prompts) is too small for CI. The planned suite is
+a 50-prompt set stored at `tests/bench/prompts.json`, covering:
 
 - 20 prompts where 1 specific memory file is the right answer
 - 15 prompts where 2-3 files compose the right answer
@@ -996,14 +1001,18 @@ Proper nouns (Anthropic, Haiku, OpenAI) keep their case.
 
 ## 22. Roadmap
 
-> **Shipped as of `0.3.0`:** v0.1.x, **v0.2.0** (OpenAI + Ollama providers, YAML
-> config), and **v0.3.0** (`memhook init` / `uninstall` + the zero-dep `tail`
-> live monitor). **v0.4.0** (this revision) adds the companion skills + the
-> `memhook skills` installer + the `/curate` nudge ([§26](#26-companion-skills-v04)).
-> **npm publish is live and automated** (Trusted Publishing / OIDC) since v0.2.
-> The `docs/PROVIDERS.md` / `docs/CONFIG.md` / `docs/BENCH.md` files the v0.2
-> row once promised were **not** created. The rows below are the original
-> plan, kept for historical intent.
+> **Shipped as of `0.5.0`:** v0.1.x, **v0.2.0** (OpenAI + Ollama providers, YAML
+> config), **v0.3.0** (`memhook init` / `uninstall` + the zero-dep `tail` live
+> monitor), **v0.4.0** (companion skills + the `memhook skills` installer + the
+> `/curate` nudge, [§26](#26-companion-skills-v04)), and **v0.5.0** — the source
+> registry (harness-adapter seam; `resurfaceHostLoaded`; `customSources`; built-in
+> host `presets` + `presets: [auto]`; `memhook presets list|detect`; the presets
+> nudge — D30–D35). On `main`, releasing in v0.6: widened `.md`/`.mdc`/`.txt`
+> source extensions (D36). **npm publish is live and automated** (Trusted
+> Publishing / OIDC) since v0.2. The `docs/PROVIDERS.md` / `docs/CONFIG.md` /
+> `docs/BENCH.md` files the v0.2 row once promised were **not** created. The rows
+> below are the original plan, kept for historical intent — actual shipped scope
+> can differ (e.g. v0.5 shipped the source registry, not `memhook bench`).
 
 | Version              | Scope                                                                                                                                                                                                                                                                                                                                           | Target          |
 | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- |
@@ -1013,7 +1022,9 @@ Proper nouns (Anthropic, Haiku, OpenAI) keep their case.
 | **v0.2.0**           | OpenAI provider + Ollama provider. YAML config file. `docs/PROVIDERS.md` + `docs/CONFIG.md` + `docs/BENCH.md`. README cost table.                                                                                                                                                                                                               | 2026-07         |
 | **v0.3.0**           | `memhook init` (Claude Code settings.json wizard with backup) + `memhook uninstall` + `memhook tail` (zero-dep ANSI live monitor, pulled forward from v0.4 — see D20). `npm publish --tag latest`.                                                                                                                                              | 2026-08         |
 | **v0.4.0**           | Companion skills: `/wrap` (end-of-session wrap-up), `/curate` (memory hygiene), `/relay` (cross-session handoff). Standalone skills installed by `memhook skills install` (pulled forward from v0.5 — the Ink TUI once slotted here shipped early in v0.3 as a zero-dep reader, D20). Plus the `/curate` nudge (additive `systemMessage`, D26). | 2026-09         |
-| **v0.5.0**           | `memhook bench` — run the 50-prompt suite against the configured provider, output recall + cost.                                                                                                                                                                                                                                                | 2026-10         |
+| **v0.5.0**           | **Source registry** (actual shipped scope): harness-adapter seam; host-autoloaded rule-zone omission by default (`resurfaceHostLoaded`); `customSources`; built-in host `presets` + `presets: [auto]`; `memhook presets list\|detect`; the presets nudge (D30–D35). _(The originally-planned `memhook bench` was not built — see below.)_       | Shipped 2026-06 |
+| **v0.6.0**           | Widened `.md`/`.mdc`/`.txt` source extensions (D36, on `main`); a Cursor `.mdc` preset to follow (needs a per-file autoload predicate).                                                                                                                                                                                                         | in progress     |
+| **`memhook bench`**  | _Unscheduled._ Run the 50-prompt suite against the configured provider, output recall + cost (§18). Slipped from v0.5; not yet planned into a release.                                                                                                                                                                                          | TBD             |
 | **v1.0.0**           | API freeze. SemVer commitment. Cross-OS testing. Bench v3 (100+ prompts). Polished README.                                                                                                                                                                                                                                                      | 2026-Q4         |
 
 Roadmap reviewed quarterly. A version slips? Document why in the
@@ -1162,4 +1173,4 @@ for marketplace distribution. Out of scope for v0.4 (D25).
 
 ---
 
-_End of specification. First frozen 2026-06-01; refreshed for v0.2 on 2026-06-02; companion skills (v0.4) on 2026-06-02._
+_End of specification. First frozen 2026-06-01; refreshed for v0.2 on 2026-06-02; companion skills (v0.4) on 2026-06-02; source registry (v0.5, D30–D36) on 2026-06-03._
