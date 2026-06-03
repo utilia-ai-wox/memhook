@@ -4,11 +4,12 @@ Project memory for Claude Code working on **memhook**.
 
 ## Mission
 
-memhook is a semantic memory router for Claude Code. It runs as a
-`UserPromptSubmit` hook: for each user prompt it asks Haiku to pick the
-0–5 most relevant memory files (`feedback_*.md`, `rule_*.md`) from the
-user's `~/.claude/` and injects them as `additionalContext`. Everything
-else stays on disk, invisible to the model until it matters.
+memhook is a semantic memory router. Claude Code is the reference host (via a
+harness-adapter seam, `src/adapters/`). It runs as a `UserPromptSubmit` hook:
+for each user prompt it asks Haiku to pick the 0–5 most relevant memory files
+(`feedback_*.md`, `project_*.md`, plus the rule zones) from the user's
+`~/.claude/` and injects them as `additionalContext`. Everything else stays on
+disk, invisible to the model until it matters.
 
 ## Cardinal doctrine: **fail-soft**
 
@@ -25,7 +26,7 @@ ask [`failsoft-auditor`](.claude/agents/failsoft-auditor.md) to review.
 
 - Node **18+** (CI matrix tests 18 / 20 / 22)
 - TypeScript **strict ESM** (no CommonJS), `tsc` → `dist/`
-- **vitest** for tests (`tests/*.test.ts`), 106 tests as of v0.4
+- **vitest** for tests (`tests/*.test.ts`), 194 tests across 21 suites as of v0.5
 - **bun** for development (`bun install`, `bun run test`); CI uses `npm`
 - CI runs on **GitHub-hosted runners** (Linux + macOS + Windows × Node
   18 / 20 / 22) — free for this public repo
@@ -46,22 +47,25 @@ Local install for hook testing:
 npm link               # exposes `memhook` globally → ~/bin/memhook
 memhook build-catalog  # rebuild the memory catalog
 memhook run            # read hook JSON from stdin, emit additionalContext
+memhook presets detect # scan for known-tool memory dirs → a presets: snippet
 ```
 
 ## Layout
 
 ```
-src/        router · catalog · cache · preFilter · providers · config · configFile · version
+src/        router · catalog · cache · preFilter · providers · config · configFile · version · index
+            sources · presetsCmd            (source registry: customSources/presets/detect; ON the hook path)
+            adapters/  claudeCode · types    (harness-adapter seam; Claude Code = adapter #1)
             ansi · install · init · tail   (init/uninstall/tail commands; not on the hook path)
             skills · skillsCmd · backup     (skills install/uninstall/list; not on the hook path)
-bin/        CLI entrypoint (`memhook run|build-catalog|init|uninstall|tail|skills|version`)
+bin/        CLI entrypoint (`memhook run|build-catalog|init|uninstall|tail|skills|presets|version`)
 skills/     bundled companion skills (wrap/ · curate/ · relay/) shipped in the npm tarball
-tests/      vitest suites — colocated with src/ they cover
+tests/      vitest suites (21 files) — colocated with src/ they cover
 dist/       tsc output (gitignored, built on publish)
 docs/       SPECIFICATION.md (frozen dev contract)
 ```
 
-## Non-goals (still firm in v0.2)
+## Non-goals (still firm in v0.5)
 
 - No telemetry, no phone-home, no update check. By default the **only**
   outbound call is `api.anthropic.com`, using the user's own API key.
@@ -107,6 +111,36 @@ install`: `/wrap` (end-of-session wrap-up), `/curate` (memory hygiene),
   (`MEMHOOK_CURATE_NUDGE`), on a cooldown.
 - **`backup.ts`** — shared `backupPath`/`stampNow`, extracted so `init.ts` and
   `skillsCmd.ts` don't import each other.
+
+## Shipped in v0.5
+
+The "cable onto existing memory" chantier — memhook installs mid-project, so
+memory already exists; v0.5 lets it route what's there. All in `src/sources.ts`
+(pure/total) unless noted; decisions D30–D35 (docs/SPECIFICATION.md §25).
+
+- **Harness-adapter seam** (`src/adapters/`) — the pipeline is harness-agnostic;
+  Claude Code is adapter #1 (`claudeCode.ts`). `route()` is byte-identical to the
+  pre-seam hook.
+- **Host-autoloaded rule zones omitted by default** (`resurfaceHostLoaded`, D30)
+  — `~/.claude/rules` + `<cwd>/.claude/rules` are loaded in full by Claude Code at
+  launch, so the catalog omits them by default (no double-injection); routes only
+  the not-autoloaded `feedback_*/project_*` memory. `MEMHOOK_RESURFACE_HOST_LOADED`
+  re-includes them.
+- **Custom sources** (`customSources`, YAML-only, D31) — extra `.md` dirs (any
+  naming, via a glob) catalogued + routed like the built-in zones.
+- **Built-in host presets** (`presets`, YAML-only, all experimental, D32) — named
+  bundles (`cline`, `continue`, `copilot`, `windsurf`); `presets: [auto]` (D35)
+  routes every detected preset. `expandPresets` / `resolveActivePresetNames`.
+- **`memhook presets list|detect`** (D33, `src/presetsCmd.ts` I/O shell) — discover
+  presets that have memory on disk; `detect` prints the `presets: [...]` snippet.
+  Not on the hook path.
+- **Presets nudge** (`maybePresetsNudge` in `src/router.ts`, D34) — additive
+  `systemMessage` suggesting `memhook presets detect` when a known host's memory
+  exists but isn't routed. Same guard-rails as the `/curate` nudge; toggle
+  `MEMHOOK_PRESETS_NUDGE`.
+
+(On `main`, unreleased → v0.6: widened routable extensions `.md`/`.mdc`/`.txt`
+via `SOURCE_EXTENSIONS`, D36 — foundation for a Cursor preset.)
 
 ## Working on this repo
 

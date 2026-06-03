@@ -97,6 +97,26 @@ by `commitlint.config.js`).
 4. Wait for CI to pass on Linux + macOS + Windows × Node 18/20/22.
 5. **Squash-merge** when approved. No "merge commit" or "rebase" options.
 
+## Keep the docs in sync (same PR as the feature)
+
+CI checks code, not prose — so docs silently drift behind features unless each
+PR updates them. **If your PR adds or changes a user-facing surface, update the
+relevant docs in the same PR** (not just `docs/SPECIFICATION.md` §8.2 / §9):
+
+| If your PR changes…                   | Update                                                                                                     |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| A user-facing capability              | `README.md` **Features** + this list                                                                       |
+| An env var or YAML config key         | `README.md` **Configuration** table + `SPECIFICATION.md` §15 + `memhook help` (`bin/memhook.ts`)           |
+| A CLI command / subcommand            | `README.md` + `SPECIFICATION.md` §9 + `memhook help`                                                       |
+| A new `src/` module or `tests/` suite | `SPECIFICATION.md` §7 file layout + `CLAUDE.md` Layout                                                     |
+| Anything shippable in a release       | `CLAUDE.md` "Shipped in vX" + `SPECIFICATION.md` decision log (Dxx) + header/§22 roadmap on a version bump |
+
+`CHANGELOG.md` is release-please-managed — never edit it by hand. A version-bump
+PR (or the first PR of a new minor) should refresh the `SPECIFICATION.md` header
+status block, §1 Identity status, and the §22 roadmap so they never trail the
+decision log. Exact counts (test totals) drift fast — prefer a rounded figure or
+omit them.
+
 ## Code style
 
 - **Strict TypeScript**: `strict`, `noUncheckedIndexedAccess`,

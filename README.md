@@ -32,6 +32,9 @@ automatically — you stop saying _"go read your memory."_
 - ⚡ **Cached & pre-filtered** — an LRU cache + a trivial-prompt skip keep latency near zero.
 - 🧰 **One-command setup** — `memhook init` wires the hooks (with backup); `memhook tail` shows routing live.
 - 🧩 **Companion skills** — optional `/wrap`, `/curate`, `/relay` to capture, tidy, and hand off your memory.
+- 🔗 **Cables onto memory you already have** — point memhook at extra `.md`/`.mdc`/`.txt` directories (`customSources`), or enable a built-in host preset by name (`presets: [...]`, experimental). It installs mid-project and routes the memory that's already there.
+- 🔎 **Preset discovery** — `memhook presets detect` scans your project for known-tool memory dirs and prints the `presets:` snippet to enable them.
+- 🚫 **No double-injection** — rule zones Claude Code already auto-loads at launch are omitted by default, so memhook routes only what the host doesn't already have (`MEMHOOK_RESURFACE_HOST_LOADED` to re-surface).
 
 ## 🤔 Why
 
@@ -125,21 +128,24 @@ Every knob is an env var, and optionally a YAML file. Precedence per key is
 **env var > YAML file > built-in default**, so an env-var-only setup behaves
 exactly as before. Sensible defaults work for most users.
 
-| Variable                         | Default                         | Purpose                                |
-| -------------------------------- | ------------------------------- | -------------------------------------- |
-| `MEMHOOK_ENABLED`                | `true`                          | Master toggle                          |
-| `MEMHOOK_PROVIDER`               | `anthropic`                     | `anthropic` \| `openai` \| `ollama`    |
-| `MEMHOOK_MODEL`                  | per-provider                    | Model id (provider default if unset)   |
-| `MEMHOOK_API_KEY_ENV`            | per-provider                    | Name of env var holding the API key    |
-| `MEMHOOK_BASE_URL`               | per-provider                    | Override the provider API endpoint     |
-| `MEMHOOK_CONFIG`                 | `~/.config/memhook/config.yaml` | Path to the optional YAML config file  |
-| `MEMHOOK_MAX_FILES`              | `5`                             | Hard cap on injected files             |
-| `MEMHOOK_MAX_ADDITIONAL_CHARS`   | `9500`                          | Soft cap on injected chars (≈2.4k tok) |
-| `MEMHOOK_MAX_OUTPUT_TOKENS`      | `200`                           | Model output cap for the selection     |
-| `MEMHOOK_TIMEOUT_MS`             | `8000` (`30000` for ollama)     | Per-request timeout                    |
-| `MEMHOOK_DISABLE_CACHE=true`     | _(off)_                         | Skip local LRU cache                   |
-| `MEMHOOK_DISABLE_PREFILTER=true` | _(off)_                         | Skip trivial-prompt skip               |
-| `MEMHOOK_DEBUG=true`             | _(off)_                         | Print errors to stderr                 |
+| Variable                         | Default                         | Purpose                                                                     |
+| -------------------------------- | ------------------------------- | --------------------------------------------------------------------------- |
+| `MEMHOOK_ENABLED`                | `true`                          | Master toggle                                                               |
+| `MEMHOOK_PROVIDER`               | `anthropic`                     | `anthropic` \| `openai` \| `ollama`                                         |
+| `MEMHOOK_MODEL`                  | per-provider                    | Model id (provider default if unset)                                        |
+| `MEMHOOK_API_KEY_ENV`            | per-provider                    | Name of env var holding the API key                                         |
+| `MEMHOOK_BASE_URL`               | per-provider                    | Override the provider API endpoint                                          |
+| `MEMHOOK_CONFIG`                 | `~/.config/memhook/config.yaml` | Path to the optional YAML config file                                       |
+| `MEMHOOK_MAX_FILES`              | `5`                             | Hard cap on injected files                                                  |
+| `MEMHOOK_MAX_ADDITIONAL_CHARS`   | `9500`                          | Soft cap on injected chars (≈2.4k tok)                                      |
+| `MEMHOOK_MAX_OUTPUT_TOKENS`      | `200`                           | Model output cap for the selection                                          |
+| `MEMHOOK_TIMEOUT_MS`             | `8000` (`30000` for ollama)     | Per-request timeout                                                         |
+| `MEMHOOK_DISABLE_CACHE=true`     | _(off)_                         | Skip local LRU cache                                                        |
+| `MEMHOOK_DISABLE_PREFILTER=true` | _(off)_                         | Skip trivial-prompt skip                                                    |
+| `MEMHOOK_RESURFACE_HOST_LOADED`  | `false`                         | Route rules the host auto-loads at launch (off = no double-injection)       |
+| `MEMHOOK_CURATE_NUDGE`           | `true`                          | Suggest `/curate` when the catalog grows large (local-only)                 |
+| `MEMHOOK_PRESETS_NUDGE`          | `true`                          | Suggest `memhook presets detect` when host memory isn't routed (local-only) |
+| `MEMHOOK_DEBUG=true`             | _(off)_                         | Print errors to stderr                                                      |
 
 ### YAML config (optional)
 
@@ -155,6 +161,35 @@ provider:
   # model + apiKeyEnv default to gpt-4o-mini + OPENAI_API_KEY
 selection:
   maxFiles: 5
+
+# Cable onto memory that already exists in this project (YAML-only — these two
+# keys have no env-var equivalent):
+customSources:
+  - dir: ./docs/decisions # any directory of .md/.mdc/.txt notes
+    glob: "*.md" # optional, default *.md
+presets:
+  [continue] # built-in host presets (experimental). `memhook presets list`
+  # to see them, `memhook presets detect` to find which apply, or `[auto]` for all.
+```
+
+## 🔗 Cabling onto existing memory
+
+memhook usually installs mid-project, so memory already exists — often produced
+by another tool. Beyond the built-in `~/.claude` zones, you can route it:
+
+- **`customSources`** — point memhook at any directory of `.md`/`.mdc`/`.txt`
+  notes (YAML, with an optional glob).
+- **`presets`** — built-in bundles for a known tool's atomic rule files, enabled
+  by name (`presets: [continue, cline]`) or all at once (`presets: [auto]`). Every
+  preset is **experimental** (doc-verified, not yet live-tested).
+- **`memhook presets`** — `list` shows the built-ins; `detect` scans your project
+  (and home) for the ones that actually have memory on disk and prints the
+  `presets: [...]` snippet to paste. When a known tool's memory is present but not
+  routed, memhook also nudges you to run `detect` (local-only; `MEMHOOK_PRESETS_NUDGE`).
+
+```bash
+memhook presets list      # the built-in per-host presets (all experimental)
+memhook presets detect    # which apply to this project → a presets: snippet
 ```
 
 ## 🔌 Providers
@@ -276,6 +311,8 @@ model**, just without injected memories for that turn.
 - `v0.2` ✅ — YAML config file, OpenAI provider, Ollama local provider (published on npm)
 - `v0.3` ✅ — `memhook init` / `memhook uninstall` setup wizard + zero-dep live monitor (`memhook tail`)
 - `v0.4` ✅ — Companion skills (`/wrap`, `/curate`, `/relay`) + `memhook skills` installer + `/curate` nudge
+- `v0.5` ✅ — Source registry: `customSources`, built-in host `presets` (experimental), `memhook presets list/detect`, the presets nudge, and host-autoloaded rule-zone omission by default (`MEMHOOK_RESURFACE_HOST_LOADED`)
+- `v0.6` 🚧 — `.mdc`/`.txt` source extensions (shipped to `main`); a Cursor preset to follow
 - `v1.0` — API frozen, cross-platform validated, polished docs
 
 ## 🤝 Contributing
