@@ -20,41 +20,7 @@ automatically — you stop saying _"go read your memory."_
 
 </div>
 
-## ✨ Features
-
-- 🎯 **Right note, right moment** — auto-selects the 0–5 memory files relevant to _this_ prompt and injects them. No more "go read your memory."
-- 🧠 **Gets better as your memory grows** — relevance is picked per prompt, so a large memory helps instead of drowning the model.
-- 🛡️ **Fail-soft** — never blocks Claude Code; every error path falls back to empty context.
-- 🔌 **Multi-provider** — Anthropic (default), OpenAI, or local Ollama. Your key, your endpoint.
-- 💸 **Light on context** — injects ~2k tokens of signal instead of a 10–14k-token catalog dump.
-- 🤫 **Zero telemetry** — the only outbound call is the LLM endpoint _you_ chose.
-- 🪶 **One dependency** — `yaml`, with zero sub-deps.
-- ⚡ **Cached & pre-filtered** — an LRU cache + a trivial-prompt skip keep latency near zero.
-- 🧰 **One-command setup** — `memhook init` wires the hooks (with backup); `memhook tail` shows routing live.
-- 🧩 **Companion skills** — optional `/wrap`, `/curate`, `/relay` to capture, tidy, and hand off your memory.
-- 🔗 **Cables onto memory you already have** — point memhook at extra `.md`/`.mdc`/`.txt` directories (`customSources`), or enable a built-in host preset by name (`presets: [...]`, experimental). It installs mid-project and routes the memory that's already there.
-- 🔎 **Preset discovery** — `memhook presets detect` scans your project for known-tool memory dirs and prints the `presets:` snippet to enable them.
-- 🚫 **No double-injection** — rule zones Claude Code already auto-loads at launch are omitted by default, so memhook routes only what the host doesn't already have (`MEMHOOK_RESURFACE_HOST_LOADED` to re-surface).
-
-## 🤔 Why
-
-Claude Code's `~/.claude/` directory accumulates a growing set of
-`feedback_*.md` (behavioural corrections) and `rule_*.md` (project doctrine)
-files. The problem isn't their size — it's that Claude doesn't know what's in
-there: it misses notes that apply, so you keep telling it _"you wrote that
-down, go read it."_
-
-memhook removes that chore. A cheap router model (**Haiku 4.5** by default)
-matches each prompt against a one-line catalog of all your memory files and
-injects just the relevant ones — so the right note is already in context,
-automatically. The rest sit on disk, invisible until they matter.
-
-| Approach              | What Claude sees                | Tokens / prompt |
-| --------------------- | ------------------------------- | --------------- |
-| Load all memory files | mostly irrelevant noise         | 10–14k          |
-| **memhook**           | only what matches _this_ prompt | ~2k             |
-
-## 🚀 Quick start
+## Install
 
 ```bash
 npm install -g memhook
@@ -66,7 +32,7 @@ memhook init
 `~/.claude/settings.json` (backing it up first, never clobbering existing
 hooks), and builds the initial catalog. It is idempotent and supports
 `--dry-run`. Restart Claude Code and you're done — then watch it work live
-with [`memhook tail`](#-observability).
+with [`memhook tail`](#observability).
 
 <details>
 <summary>Manual setup (what <code>init</code> automates)</summary>
@@ -106,7 +72,41 @@ npm link
 
 </details>
 
-## 🔍 How it works
+## Why
+
+Claude Code's `~/.claude/` directory accumulates a growing set of
+`feedback_*.md` (behavioural corrections) and `rule_*.md` (project doctrine)
+files. The problem isn't their size — it's that Claude doesn't know what's in
+there: it misses notes that apply, so you keep telling it _"you wrote that
+down, go read it."_
+
+memhook removes that chore. A cheap router model (**Haiku 4.5** by default)
+matches each prompt against a one-line catalog of all your memory files and
+injects just the relevant ones — so the right note is already in context,
+automatically. The rest sit on disk, invisible until they matter.
+
+| Approach              | What Claude sees                | Tokens / prompt |
+| --------------------- | ------------------------------- | --------------- |
+| Load all memory files | mostly irrelevant noise         | 10–14k          |
+| **memhook**           | only what matches _this_ prompt | ~2k             |
+
+## Features
+
+- **Right note, right moment** — auto-selects the 0–5 memory files relevant to _this_ prompt and injects them. No more "go read your memory."
+- **Gets better as your memory grows** — relevance is picked per prompt, so a large memory helps instead of drowning the model.
+- **Fail-soft** — never blocks Claude Code; every error path falls back to empty context.
+- **Multi-provider** — Anthropic (default), OpenAI, or local Ollama. Your key, your endpoint.
+- **Light on context** — injects ~2k tokens of signal instead of a 10–14k-token catalog dump.
+- **Zero telemetry** — the only outbound call is the LLM endpoint _you_ chose.
+- **One dependency** — `yaml`, with zero sub-deps.
+- **Cached & pre-filtered** — an LRU cache + a trivial-prompt skip keep latency near zero.
+- **One-command setup** — `memhook init` wires the hooks (with backup); `memhook tail` shows routing live.
+- **Companion skills** — optional `/wrap`, `/curate`, `/relay` to capture, tidy, and hand off your memory.
+- **Cables onto memory you already have** — point memhook at extra `.md`/`.mdc`/`.txt` directories (`customSources`), or enable a built-in host preset by name (`presets: [...]`, experimental). It installs mid-project and routes the memory that's already there.
+- **Preset discovery** — `memhook presets detect` scans your project for known-tool memory dirs and prints the `presets:` snippet to enable them.
+- **No double-injection** — rule zones Claude Code already auto-loads at launch are omitted by default, so memhook routes only what the host doesn't already have (`MEMHOOK_RESURFACE_HOST_LOADED` to re-surface).
+
+## How it works
 
 ```
 UserPromptSubmit hook
@@ -122,7 +122,7 @@ UserPromptSubmit hook
 └────────────────────────────────────────┘
 ```
 
-## ⚙️ Configuration
+## Configuration
 
 Every knob is an env var, and optionally a YAML file. Precedence per key is
 **env var > YAML file > built-in default**, so an env-var-only setup behaves
@@ -172,7 +172,7 @@ presets:
   # to see them, `memhook presets detect` to find which apply, or `[auto]` for all.
 ```
 
-## 🔗 Cabling onto existing memory
+## Cabling onto existing memory
 
 memhook usually installs mid-project, so memory already exists — often produced
 by another tool. Beyond the built-in `~/.claude` zones, you can route it:
@@ -192,7 +192,7 @@ memhook presets list      # the built-in per-host presets (all experimental)
 memhook presets detect    # which apply to this project → a presets: snippet
 ```
 
-## 🔌 Providers
+## Providers
 
 The default provider is **Anthropic** — with no `MEMHOOK_PROVIDER` set, the
 only outbound call memhook ever makes is to `api.anthropic.com`, using your own
@@ -214,7 +214,7 @@ LLM endpoint _you_ choose to route through.
   the native `/api/chat` endpoint with `stream:false`; the timeout defaults to
   30s to absorb cold model loads.
 
-## 📊 Observability
+## Observability
 
 Every invocation appends one JSON line to `~/.claude/logs/memhook.log`:
 
@@ -273,7 +273,7 @@ jq -c 'select((.ts | fromdateiso8601) > (now - 7*86400)) | .status' \
 | `api_no_content`       | API returned 200 but no text                          |
 | `parse_invalid`        | Response wasn't a valid JSON array                    |
 
-## 🧩 Companion skills
+## Companion skills
 
 Routing only works well when your memory stays healthy. memhook ships three
 optional Claude Code skills for that — install them with one command:
@@ -299,14 +299,14 @@ When your catalog grows large, memhook also adds a one-line reminder to run
 `/curate` (a local-only `systemMessage`, 7-day cooldown — toggle with
 `MEMHOOK_CURATE_NUDGE`).
 
-## 🛡️ Fail-soft
+## Fail-soft
 
 memhook never blocks Claude Code. On any error — missing key, network
 timeout, malformed JSON, broken filesystem — it emits an empty
 `additionalContext` and logs the status. **Your prompt always reaches the
 model**, just without injected memories for that turn.
 
-## 🗺️ Roadmap
+## Roadmap
 
 - `v0.2` ✅ — YAML config file, OpenAI provider, Ollama local provider (published on npm)
 - `v0.3` ✅ — `memhook init` / `memhook uninstall` setup wizard + zero-dep live monitor (`memhook tail`)
@@ -315,7 +315,7 @@ model**, just without injected memories for that turn.
 - `v0.6` 🚧 — `.mdc`/`.txt` source extensions (shipped to `main`); a Cursor preset to follow
 - `v1.0` — API frozen, cross-platform validated, polished docs
 
-## 🤝 Contributing
+## Contributing
 
 Contributions welcome — please read [CONTRIBUTING.md](CONTRIBUTING.md) first.
 The hook contract (fail-soft, no telemetry, strict TypeScript) is
@@ -323,7 +323,7 @@ non-negotiable; the [`failsoft-auditor`](.claude/agents/failsoft-auditor.md)
 agent guards it on every PR.
 
 > [!TIP]
-> ⭐ If memhook keeps Claude on-context without the "go read your memory" nudges, **star the repo** — it helps other Claude Code users find it.
+> If memhook keeps Claude on-context without the "go read your memory" nudges, **star the repo** — it helps other Claude Code users find it.
 
 ## License
 
