@@ -21,7 +21,12 @@ import {
 } from "node:fs";
 import { join, basename as pathBasename } from "node:path";
 import { homedir } from "node:os";
-import { activeCustomSources, listMatchingFiles, type CustomSource } from "./sources.js";
+import {
+  activeCustomSources,
+  isHostAutoloadedFile,
+  listMatchingFiles,
+  type CustomSource,
+} from "./sources.js";
 
 export interface CatalogBuildOptions {
   cwd: string;
@@ -77,9 +82,10 @@ export function buildCatalog(opts: CatalogBuildOptions): {
   }
   // User-declared extra sources (cable onto existing project memory). Skipped
   // when host-autoloaded unless resurfaceHostLoaded — same gate as the rules.
-  const custom = activeCustomSources(opts.customSources ?? [], opts.resurfaceHostLoaded ?? false);
+  const resurface = opts.resurfaceHostLoaded ?? false;
+  const custom = activeCustomSources(opts.customSources ?? [], resurface);
   if (custom.length > 0) {
-    sections.push(emitCustomSourcesSection(custom));
+    sections.push(emitCustomSourcesSection(custom, resurface));
   }
 
   const content = sections.join("\n");
@@ -172,7 +178,7 @@ function emitRulesSection(label: string, dir: string, isCwdZone: boolean): strin
   return lines.join("\n");
 }
 
-function emitCustomSourcesSection(sources: CustomSource[]): string {
+function emitCustomSourcesSection(sources: CustomSource[], resurfaceHostLoaded: boolean): string {
   const lines: string[] = ["=== CUSTOM SOURCES ==="];
   let total = 0;
   for (const src of sources) {
@@ -187,12 +193,28 @@ function emitCustomSourcesSection(sources: CustomSource[]): string {
     // the catalog lists only those. Shared with preset detection via
     // listMatchingFiles so the two never disagree on what a source matches.
     const files = listMatchingFiles(entries, src.glob);
-    if (files.length === 0) continue;
-    lines.push(`--- ${src.dir} ---`);
+    // Read each file ONCE; the content feeds both the per-file autoload skip and
+    // the description (no double read). For a `perFileAutoload` source, files the
+    // host already loads in full (Cursor `alwaysApply`, Windsurf `always_on`) are
+    // omitted so the router can't re-inject them — unless `resurfaceHostLoaded`,
+    // which re-includes them just like the source-level `hostAutoLoaded` gate.
+    const emitted: { name: string; desc: string }[] = [];
     for (const f of files) {
-      lines.push(`${f}: ${extractDescription(join(src.dir, f))}`);
+      let content = "";
+      try {
+        content = readFileSync(join(src.dir, f), "utf8");
+      } catch {
+        content = "";
+      }
+      if (src.perFileAutoload && !resurfaceHostLoaded && isHostAutoloadedFile(content)) continue;
+      emitted.push({ name: f, desc: extractDescriptionFromContent(content) });
     }
-    total += files.length;
+    if (emitted.length === 0) continue;
+    lines.push(`--- ${src.dir} ---`);
+    for (const e of emitted) {
+      lines.push(`${e.name}: ${e.desc}`);
+    }
+    total += emitted.length;
   }
   lines.push(`(${total} entries)`);
   lines.push("");
@@ -220,6 +242,11 @@ function extractDescription(file: string): string {
   } catch {
     return "";
   }
+  return extractDescriptionFromContent(content);
+}
+
+/** Pure description extraction from file content (frontmatter `description:` else first H1). */
+function extractDescriptionFromContent(content: string): string {
   // YAML frontmatter description
   if (content.startsWith("---")) {
     const end = content.indexOf("\n---", 3);

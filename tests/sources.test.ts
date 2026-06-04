@@ -4,6 +4,7 @@ import {
   expandHome,
   globToRegExp,
   listMatchingFiles,
+  isHostAutoloadedFile,
   hasSourceExtension,
   SOURCE_EXTENSIONS,
   resolveCustomSources,
@@ -91,6 +92,34 @@ describe("listMatchingFiles", () => {
   });
 });
 
+describe("isHostAutoloadedFile", () => {
+  it("detects Cursor alwaysApply: true and Windsurf trigger: always_on in frontmatter", () => {
+    expect(isHostAutoloadedFile("---\nalwaysApply: true\n---\nbody")).toBe(true);
+    expect(isHostAutoloadedFile("---\ndescription: x\nalwaysApply: true\n---\n")).toBe(true);
+    expect(isHostAutoloadedFile("---\ntrigger: always_on\n---\n")).toBe(true);
+    // Tolerates no-space and trailing whitespace around the value.
+    expect(isHostAutoloadedFile("---\nalwaysApply:true\n---\n")).toBe(true);
+    expect(isHostAutoloadedFile("---\ntrigger:  always_on  \n---\n")).toBe(true);
+  });
+
+  it("returns false for non-always-on rules and files with no/blank frontmatter", () => {
+    expect(isHostAutoloadedFile("---\nalwaysApply: false\n---\n")).toBe(false);
+    expect(isHostAutoloadedFile("---\ntrigger: model_decision\n---\n")).toBe(false);
+    expect(isHostAutoloadedFile("---\nglobs: src/**\n---\n")).toBe(false);
+    expect(isHostAutoloadedFile("# Just a heading\nbody")).toBe(false);
+    expect(isHostAutoloadedFile("")).toBe(false);
+  });
+
+  it("only scans the frontmatter block — body prose never false-positives", () => {
+    // No closing fence → no frontmatter block at all.
+    expect(isHostAutoloadedFile("---\ndescription: x\nbody alwaysApply: true everywhere")).toBe(
+      false,
+    );
+    // The marker appears only after the frontmatter closes.
+    expect(isHostAutoloadedFile("---\ndescription: x\n---\nalwaysApply: true")).toBe(false);
+  });
+});
+
 describe("resolveCustomSources", () => {
   const home = "/home/u";
 
@@ -104,13 +133,27 @@ describe("resolveCustomSources", () => {
   it("resolves a full entry and applies defaults (glob *.md, scope memory, hostAutoLoaded false)", () => {
     const out = resolveCustomSources([{ dir: "~/notes" }], home);
     expect(out).toEqual([
-      { dir: join(home, "notes"), glob: "*.md", scope: "memory", hostAutoLoaded: false },
+      {
+        dir: join(home, "notes"),
+        glob: "*.md",
+        scope: "memory",
+        hostAutoLoaded: false,
+        perFileAutoload: false,
+      },
     ]);
   });
 
-  it("honours explicit glob / scope / hostAutoLoaded", () => {
+  it("honours explicit glob / scope / hostAutoLoaded / perFileAutoload", () => {
     const out = resolveCustomSources(
-      [{ dir: "/a", glob: "rule-*.md", scope: "rules", hostAutoLoaded: true }],
+      [
+        {
+          dir: "/a",
+          glob: "rule-*.md",
+          scope: "rules",
+          hostAutoLoaded: true,
+          perFileAutoload: true,
+        },
+      ],
       home,
     );
     expect(out[0]).toEqual({
@@ -118,6 +161,13 @@ describe("resolveCustomSources", () => {
       glob: "rule-*.md",
       scope: "rules",
       hostAutoLoaded: true,
+      perFileAutoload: true,
+    });
+  });
+
+  it("coerces a non-true perFileAutoload to false", () => {
+    expect(resolveCustomSources([{ dir: "/a", perFileAutoload: "yes" }], home)[0]).toMatchObject({
+      perFileAutoload: false,
     });
   });
 
@@ -164,15 +214,29 @@ describe("host presets", () => {
     expect(isPresetName("nope")).toBe(false);
   });
 
-  it("every preset is experimental and only ships atomic .md/.instructions.md sources", () => {
+  it("every preset is experimental and ships atomic sources with an allowed-extension glob", () => {
     for (const def of Object.values(HOST_PRESETS)) {
       expect(def.experimental).toBe(true);
       expect(def.sources.length).toBeGreaterThan(0);
       for (const s of def.sources) {
         expect(["cwd", "home"]).toContain(s.base);
-        expect(s.glob.endsWith(".md")).toBe(true);
+        // The glob narrows to an allowed source extension (.md / .mdc / .txt) so
+        // it always passes both the catalog filter and the router guard.
+        expect(SOURCE_EXTENSIONS.some((ext) => s.glob.endsWith(`.${ext}`))).toBe(true);
+        // perFileAutoload, when present, is a boolean (default false at expansion).
+        if (s.perFileAutoload !== undefined) expect(typeof s.perFileAutoload).toBe("boolean");
       }
     }
+  });
+
+  it("the cursor preset is .mdc, per-file-autoload, not directory-wide host-autoloaded", () => {
+    const cursor = HOST_PRESETS["cursor"];
+    expect(cursor?.sources).toHaveLength(1);
+    expect(cursor?.sources[0]).toMatchObject({
+      glob: "*.mdc",
+      hostAutoLoaded: false,
+      perFileAutoload: true,
+    });
   });
 
   it("resolvePresetNames keeps known names + the auto token, drops unknown / non-strings / non-arrays", () => {
@@ -189,14 +253,28 @@ describe("host presets", () => {
       glob: "*.md",
       scope: "rules",
       hostAutoLoaded: false,
+      perFileAutoload: false,
     });
     expect(out).toContainEqual({
       dir: join("/home/u", ".continue", "rules"),
       glob: "*.md",
       scope: "rules",
       hostAutoLoaded: false,
+      perFileAutoload: false,
     });
     expect(expandPresets(["nope"], "/r", "/h")).toEqual([]);
+  });
+
+  it("expandPresets propagates perFileAutoload for cursor (.mdc, true)", () => {
+    expect(expandPresets(["cursor"], "/repo", "/home/u")).toEqual([
+      {
+        dir: join("/repo", ".cursor", "rules"),
+        glob: "*.mdc",
+        scope: "rules",
+        hostAutoLoaded: false,
+        perFileAutoload: true,
+      },
+    ]);
   });
 
   it("resolveSources concats explicit customSources then expanded presets", () => {
@@ -214,6 +292,7 @@ describe("host presets", () => {
       glob: "*.md",
       scope: "rules",
       hostAutoLoaded: false,
+      perFileAutoload: true,
     });
   });
 });
@@ -330,6 +409,7 @@ describe("resolveActivePresetNames (auto)", () => {
       glob: "*.md",
       scope: "rules",
       hostAutoLoaded: false,
+      perFileAutoload: true,
     });
     // A preset with no memory on disk is not pulled in by auto.
     expect(out.some((s) => s.dir === join(cwd, ".continue", "rules"))).toBe(false);

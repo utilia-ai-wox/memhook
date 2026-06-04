@@ -129,8 +129,8 @@ memory already exists; v0.5 lets it route what's there. All in `src/sources.ts`
 - **Custom sources** (`customSources`, YAML-only, D31) — extra `.md` dirs (any
   naming, via a glob) catalogued + routed like the built-in zones.
 - **Built-in host presets** (`presets`, YAML-only, all experimental, D32) — named
-  bundles (`cline`, `continue`, `copilot`, `windsurf`); `presets: [auto]` (D35)
-  routes every detected preset. `expandPresets` / `resolveActivePresetNames`.
+  bundles (`cline`, `continue`, `copilot`, `cursor`, `windsurf`); `presets: [auto]`
+  (D35) routes every detected preset. `expandPresets` / `resolveActivePresetNames`.
 - **`memhook presets list|detect`** (D33, `src/presetsCmd.ts` I/O shell) — discover
   presets that have memory on disk; `detect` prints the `presets: [...]` snippet.
   Not on the hook path.
@@ -139,8 +139,12 @@ memory already exists; v0.5 lets it route what's there. All in `src/sources.ts`
   exists but isn't routed. Same guard-rails as the `/curate` nudge; toggle
   `MEMHOOK_PRESETS_NUDGE`.
 
-(On `main`, unreleased → v0.6: widened routable extensions `.md`/`.mdc`/`.txt`
-via `SOURCE_EXTENSIONS`, D36 — foundation for a Cursor preset.)
+(On `main`, unreleased → v0.6: widened routable extensions `.md`/`.mdc`/`.txt` via
+`SOURCE_EXTENSIONS`, D36; a per-file autoload predicate `isHostAutoloadedFile`, a
+`perFileAutoload` source flag, a `cursor` preset (`.cursor/rules/*.mdc`), and
+`windsurf` refined to per-file, D37. Always-applied rules — Cursor
+`alwaysApply: true`, Windsurf `trigger: always_on` — are skipped at catalog +
+router time.)
 
 ## Working on this repo
 

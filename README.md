@@ -180,8 +180,12 @@ by another tool. Beyond the built-in `~/.claude` zones, you can route it:
 - **`customSources`** — point memhook at any directory of `.md`/`.mdc`/`.txt`
   notes (YAML, with an optional glob).
 - **`presets`** — built-in bundles for a known tool's atomic rule files, enabled
-  by name (`presets: [continue, cline]`) or all at once (`presets: [auto]`). Every
-  preset is **experimental** (doc-verified, not yet live-tested).
+  by name (`presets: [continue, cline]`) or all at once (`presets: [auto]`).
+  Built-ins: `cline`, `continue`, `copilot`, `cursor`, `windsurf`. The `cursor`
+  (`.cursor/rules/*.mdc`) and `windsurf` presets route only the rules the host
+  doesn't already auto-load — always-applied ones (`alwaysApply: true` /
+  `trigger: always_on`) are skipped so they aren't double-injected. Every preset is
+  **experimental** (doc-verified, not yet live-tested).
 - **`memhook presets`** — `list` shows the built-ins; `detect` scans your project
   (and home) for the ones that actually have memory on disk and prints the
   `presets: [...]` snippet to paste. When a known tool's memory is present but not
@@ -312,7 +316,7 @@ model**, just without injected memories for that turn.
 - `v0.3` ✅ — `memhook init` / `memhook uninstall` setup wizard + zero-dep live monitor (`memhook tail`)
 - `v0.4` ✅ — Companion skills (`/wrap`, `/curate`, `/relay`) + `memhook skills` installer + `/curate` nudge
 - `v0.5` ✅ — Source registry: `customSources`, built-in host `presets` (experimental), `memhook presets list/detect`, the presets nudge, and host-autoloaded rule-zone omission by default (`MEMHOOK_RESURFACE_HOST_LOADED`)
-- `v0.6` 🚧 — `.mdc`/`.txt` source extensions (shipped to `main`); a Cursor preset to follow
+- `v0.6` 🚧 — `.mdc`/`.txt` source extensions; a per-file autoload predicate + a Cursor preset (Windsurf refined to per-file) — on `main`
 - `v1.0` — API frozen, cross-platform validated, polished docs
 
 ## Contributing

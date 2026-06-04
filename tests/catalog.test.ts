@@ -147,4 +147,64 @@ describe("buildCatalog", () => {
     buildCatalog({ ...opts, resurfaceHostLoaded: true });
     expect(readFileSync(outputPath, "utf8")).toContain("h.md");
   });
+
+  it("perFileAutoload: skips always-applied files but keeps manual ones (Cursor .mdc shape)", () => {
+    const custom = join(root, "cursor-rules");
+    mkdirSync(custom, { recursive: true });
+    // Always-applied → host already loads it → omitted to avoid double-injection.
+    writeFileSync(join(custom, "always.mdc"), "---\nalwaysApply: true\ndescription: always\n---\n");
+    // Manual / agent-requested → host never surfaces it → routed.
+    writeFileSync(join(custom, "manual.mdc"), "---\ndescription: manual rule\n---\n");
+    const opts = {
+      cwd,
+      projectsRoot,
+      globalRulesDir,
+      outputPath,
+      customSources: [
+        {
+          dir: custom,
+          glob: "*.mdc",
+          scope: "rules" as const,
+          hostAutoLoaded: false,
+          perFileAutoload: true,
+        },
+      ],
+    };
+    buildCatalog(opts);
+    const out = readFileSync(outputPath, "utf8");
+    expect(out).toContain("=== CUSTOM SOURCES ===");
+    expect(out).toContain("manual.mdc: manual rule");
+    expect(out).not.toContain("always.mdc");
+
+    // resurfaceHostLoaded re-includes the always-applied file (same gate as the
+    // source-level hostAutoLoaded), for positional re-surfacing.
+    buildCatalog({ ...opts, resurfaceHostLoaded: true });
+    expect(readFileSync(outputPath, "utf8")).toContain("always.mdc: always");
+  });
+
+  it("perFileAutoload: a dir of only always-applied files emits no section header", () => {
+    const custom = join(root, "all-always");
+    mkdirSync(custom, { recursive: true });
+    writeFileSync(join(custom, "a.mdc"), "---\nalwaysApply: true\n---\n");
+    writeFileSync(join(custom, "b.mdc"), "---\ntrigger: always_on\n---\n");
+    buildCatalog({
+      cwd,
+      projectsRoot,
+      globalRulesDir,
+      outputPath,
+      customSources: [
+        {
+          dir: custom,
+          glob: "*.mdc",
+          scope: "rules" as const,
+          hostAutoLoaded: false,
+          perFileAutoload: true,
+        },
+      ],
+    });
+    const out = readFileSync(outputPath, "utf8");
+    expect(out).not.toContain(`--- ${custom} ---`);
+    expect(out).not.toContain("a.mdc");
+    expect(out).not.toContain("b.mdc");
+  });
 });

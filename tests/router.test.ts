@@ -223,6 +223,63 @@ describe("router", () => {
     vi.unstubAllGlobals();
   });
 
+  it("perFileAutoload: refuses to inject an always-applied file even if selected (catalog/router lockstep)", async () => {
+    const cursorDir = join(root, ".cursor", "rules");
+    mkdirSync(cursorDir, { recursive: true });
+    // Always-applied: the host loads it in full, so the router must NOT re-inject
+    // it — even though the (stubbed) model named it. Mirrors the catalog omission.
+    writeFileSync(join(cursorDir, "always.mdc"), "---\nalwaysApply: true\n---\nAlways body X");
+    const cfgPath = join(root, "cursor.yaml");
+    writeFileSync(cfgPath, `presets:\n  - cursor\n`);
+    vi.stubGlobal("fetch", mockFetch('["always.mdc"]'));
+    const result = await route(JSON.stringify({ prompt: "cursor-always", cwd: root }), {
+      ...env,
+      MEMHOOK_CONFIG: cfgPath,
+    });
+    expect(result.hookSpecificOutput.additionalContext).toBe("");
+    expect(result.hookSpecificOutput.additionalContext).not.toContain("Always body X");
+    expect(readFileSync(logPath, "utf8")).toContain('"status":"all_unfound"');
+    vi.unstubAllGlobals();
+  });
+
+  it("perFileAutoload: still injects a manual (non-always-applied) rule from the same dir", async () => {
+    const cursorDir = join(root, ".cursor", "rules");
+    mkdirSync(cursorDir, { recursive: true });
+    writeFileSync(join(cursorDir, "manual.mdc"), "---\ndescription: manual\n---\nManual body Y");
+    const cfgPath = join(root, "cursor2.yaml");
+    writeFileSync(cfgPath, `presets:\n  - cursor\n`);
+    vi.stubGlobal("fetch", mockFetch('["manual.mdc"]'));
+    const result = await route(JSON.stringify({ prompt: "cursor-manual", cwd: root }), {
+      ...env,
+      MEMHOOK_CONFIG: cfgPath,
+    });
+    expect(result.hookSpecificOutput.additionalContext).toContain("Manual body Y");
+    expect(readFileSync(logPath, "utf8")).toContain('"status":"ok"');
+    vi.unstubAllGlobals();
+  });
+
+  it("perFileAutoload + resurfaceHostLoaded: re-includes an always-applied file (router/catalog lockstep)", async () => {
+    // Distinct cwd so the cursor preset dir is clean (prior tests populated the
+    // shared root/.cursor/rules). Under resurface the per-file skip is disabled,
+    // so the always-applied file SHOULD inject — the symmetric counterpart of the
+    // catalog resurface test.
+    const proj = join(root, "resurface-proj");
+    const cursorDir = join(proj, ".cursor", "rules");
+    mkdirSync(cursorDir, { recursive: true });
+    writeFileSync(join(cursorDir, "always.mdc"), "---\nalwaysApply: true\n---\nResurfaced body Z");
+    const cfgPath = join(root, "cursor-resurface.yaml");
+    writeFileSync(cfgPath, `presets:\n  - cursor\n`);
+    vi.stubGlobal("fetch", mockFetch('["always.mdc"]'));
+    const result = await route(JSON.stringify({ prompt: "cursor-resurface", cwd: proj }), {
+      ...env,
+      MEMHOOK_CONFIG: cfgPath,
+      MEMHOOK_RESURFACE_HOST_LOADED: "true",
+    });
+    expect(result.hookSpecificOutput.additionalContext).toContain("Resurfaced body Z");
+    expect(readFileSync(logPath, "utf8")).toContain('"status":"ok"');
+    vi.unstubAllGlobals();
+  });
+
   it("still rejects a path-traversal basename after the extension widening (guard intact)", async () => {
     vi.stubGlobal("fetch", mockFetch('["../feedback_alpha.md"]'));
     const result = await route(JSON.stringify({ prompt: "traversal", cwd: root }), env);
