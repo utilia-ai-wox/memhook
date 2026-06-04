@@ -94,25 +94,39 @@ export function listMatchingFiles(entries: readonly string[], glob: string): str
 }
 
 /**
+ * The inner text of a leading YAML frontmatter block (`---` … `\n---`), or null
+ * when the content has no terminated frontmatter. Pure + total. Single source of
+ * truth for frontmatter extraction so the two readers that depend on it —
+ * `isHostAutoloadedFile` (the per-file autoload skip) and the catalog's
+ * description extractor — can never desync on the block boundary, which would
+ * otherwise threaten the "catalog + router never disagree" invariant.
+ */
+export function frontmatterBlock(content: string): string | null {
+  if (!content.startsWith("---")) return null;
+  const end = content.indexOf("\n---", 3);
+  if (end < 0) return null; // unterminated → no block (never index 0..2: search starts at 3)
+  return content.slice(3, end);
+}
+
+/**
  * Whether a rule file declares itself ALWAYS-APPLIED by its host — i.e. the host
  * already injects it in full on every turn, so memhook routing it again would
  * double-inject (the same contract as the source-level `hostAutoLoaded`, decided
  * per file instead of per directory). Recognises the two documented per-file
  * always-on markers in YAML frontmatter: Cursor `alwaysApply: true` and Windsurf
  * `trigger: always_on` (docs/private/host-source-presets-SPEC-2026-06-02.md
- * footnotes 5–6). Only the frontmatter block is scanned (never the body), so body
- * prose can't false-positive. Pure + total: no frontmatter, an unterminated block,
- * or any other value → false (the conservative direction — a missed marker routes
- * the file, it never wrongly hides one). Drives a source's `perFileAutoload` skip.
+ * footnotes 5–6); a trailing `# comment` after the value is tolerated. Only the
+ * frontmatter block is scanned (never the body), so body prose can't
+ * false-positive. Pure + total: no frontmatter, an unterminated block, or any
+ * other value → false (the conservative direction — a missed marker routes the
+ * file, it never wrongly hides one). Drives a source's `perFileAutoload` skip.
  */
 export function isHostAutoloadedFile(content: string): boolean {
-  if (!content.startsWith("---")) return false;
-  const end = content.indexOf("\n---", 3);
-  if (end < 0) return false;
-  const fm = content.slice(3, end);
+  const fm = frontmatterBlock(content);
+  if (fm === null) return false;
   return (
-    /^alwaysApply:[ \t]*true[ \t]*$/m.test(fm) || // Cursor always-applied rule
-    /^trigger:[ \t]*always_on[ \t]*$/m.test(fm) // Windsurf always_on trigger
+    /^alwaysApply:[ \t]*true[ \t]*(?:#.*)?$/m.test(fm) || // Cursor always-applied rule
+    /^trigger:[ \t]*always_on[ \t]*(?:#.*)?$/m.test(fm) // Windsurf always_on trigger
   );
 }
 

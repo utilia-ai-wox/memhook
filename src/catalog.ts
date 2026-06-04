@@ -23,6 +23,7 @@ import { join, basename as pathBasename } from "node:path";
 import { homedir } from "node:os";
 import {
   activeCustomSources,
+  frontmatterBlock,
   isHostAutoloadedFile,
   listMatchingFiles,
   type CustomSource,
@@ -180,6 +181,15 @@ function emitRulesSection(label: string, dir: string, isCwdZone: boolean): strin
 
 function emitCustomSourcesSection(sources: CustomSource[], resurfaceHostLoaded: boolean): string {
   const lines: string[] = ["=== CUSTOM SOURCES ==="];
+  // Per-file autoload is decided per DIRECTORY, identically to the router
+  // (router.ts readSelected): a dir is skip-eligible iff ANY active source over it
+  // is `perFileAutoload`. Keying on the dir — not the individual source — keeps the
+  // catalog and the router in lockstep when two sources point at the same dir with
+  // different flags (otherwise the catalog could list a file the router refuses to
+  // inject). Empty when resurfacing, so the always-applied files are re-included.
+  const perFileAutoloadDirs = resurfaceHostLoaded
+    ? new Set<string>()
+    : new Set(sources.filter((s) => s.perFileAutoload).map((s) => s.dir));
   let total = 0;
   for (const src of sources) {
     let entries: string[];
@@ -193,12 +203,13 @@ function emitCustomSourcesSection(sources: CustomSource[], resurfaceHostLoaded: 
     // the catalog lists only those. Shared with preset detection via
     // listMatchingFiles so the two never disagree on what a source matches.
     const files = listMatchingFiles(entries, src.glob);
+    const perFileAutoload = perFileAutoloadDirs.has(src.dir);
     // Read each file ONCE; the content feeds both the per-file autoload skip and
-    // the description (no double read). For a `perFileAutoload` source, files the
-    // host already loads in full (Cursor `alwaysApply`, Windsurf `always_on`) are
-    // omitted so the router can't re-inject them — unless `resurfaceHostLoaded`,
-    // which re-includes them just like the source-level `hostAutoLoaded` gate.
-    const emitted: { name: string; desc: string }[] = [];
+    // the description (no double read). Always-applied files (Cursor `alwaysApply`,
+    // Windsurf `always_on`) are omitted so the router can't re-inject what the host
+    // already loads. A read failure yields content="" → isHostAutoloadedFile false
+    // → listed with an empty description, exactly as a normal unreadable file.
+    const body: string[] = [];
     for (const f of files) {
       let content = "";
       try {
@@ -206,15 +217,12 @@ function emitCustomSourcesSection(sources: CustomSource[], resurfaceHostLoaded: 
       } catch {
         content = "";
       }
-      if (src.perFileAutoload && !resurfaceHostLoaded && isHostAutoloadedFile(content)) continue;
-      emitted.push({ name: f, desc: extractDescriptionFromContent(content) });
+      if (perFileAutoload && isHostAutoloadedFile(content)) continue;
+      body.push(`${f}: ${extractDescriptionFromContent(content)}`);
     }
-    if (emitted.length === 0) continue;
-    lines.push(`--- ${src.dir} ---`);
-    for (const e of emitted) {
-      lines.push(`${e.name}: ${e.desc}`);
-    }
-    total += emitted.length;
+    if (body.length === 0) continue;
+    lines.push(`--- ${src.dir} ---`, ...body);
+    total += body.length;
   }
   lines.push(`(${total} entries)`);
   lines.push("");
@@ -247,19 +255,17 @@ function extractDescription(file: string): string {
 
 /** Pure description extraction from file content (frontmatter `description:` else first H1). */
 function extractDescriptionFromContent(content: string): string {
-  // YAML frontmatter description
-  if (content.startsWith("---")) {
-    const end = content.indexOf("\n---", 3);
-    if (end > 0) {
-      const fm = content.slice(3, end);
-      const descMatch = fm.match(/^description:\s*(.+?)$/m);
-      if (descMatch?.[1]) {
-        return descMatch[1]
-          .trim()
-          .replace(/^["']|["']$/g, "")
-          .slice(0, 200)
-          .replace(/\s+/g, " ");
-      }
+  // YAML frontmatter description — shares the block boundary with the autoload
+  // predicate via frontmatterBlock so the two readers can never desync.
+  const fm = frontmatterBlock(content);
+  if (fm !== null) {
+    const descMatch = fm.match(/^description:\s*(.+?)$/m);
+    if (descMatch?.[1]) {
+      return descMatch[1]
+        .trim()
+        .replace(/^["']|["']$/g, "")
+        .slice(0, 200)
+        .replace(/\s+/g, " ");
     }
   }
   // Fallback: first H1

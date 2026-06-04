@@ -4,6 +4,7 @@ import {
   expandHome,
   globToRegExp,
   listMatchingFiles,
+  frontmatterBlock,
   isHostAutoloadedFile,
   hasSourceExtension,
   SOURCE_EXTENSIONS,
@@ -92,6 +93,15 @@ describe("listMatchingFiles", () => {
   });
 });
 
+describe("frontmatterBlock", () => {
+  it("returns the inner block, or null for no/unterminated frontmatter", () => {
+    expect(frontmatterBlock("---\na: 1\n---\nbody")).toBe("\na: 1");
+    expect(frontmatterBlock("---\na: 1\nno close")).toBeNull(); // unterminated
+    expect(frontmatterBlock("# heading\nbody")).toBeNull(); // no frontmatter
+    expect(frontmatterBlock("")).toBeNull();
+  });
+});
+
 describe("isHostAutoloadedFile", () => {
   it("detects Cursor alwaysApply: true and Windsurf trigger: always_on in frontmatter", () => {
     expect(isHostAutoloadedFile("---\nalwaysApply: true\n---\nbody")).toBe(true);
@@ -100,6 +110,9 @@ describe("isHostAutoloadedFile", () => {
     // Tolerates no-space and trailing whitespace around the value.
     expect(isHostAutoloadedFile("---\nalwaysApply:true\n---\n")).toBe(true);
     expect(isHostAutoloadedFile("---\ntrigger:  always_on  \n---\n")).toBe(true);
+    // Tolerates a trailing YAML comment after the value (hand-edited rules).
+    expect(isHostAutoloadedFile("---\nalwaysApply: true # always on\n---\n")).toBe(true);
+    expect(isHostAutoloadedFile("---\ntrigger: always_on  # note\n---\n")).toBe(true);
   });
 
   it("returns false for non-always-on rules and files with no/blank frontmatter", () => {
@@ -193,6 +206,7 @@ describe("activeCustomSources", () => {
     glob: "*.md",
     scope: "memory",
     hostAutoLoaded,
+    perFileAutoload: false,
   });
 
   it("always includes non-host-autoloaded sources", () => {
@@ -279,7 +293,7 @@ describe("host presets", () => {
 
   it("resolveSources concats explicit customSources then expanded presets", () => {
     const custom: CustomSource[] = [
-      { dir: "/x", glob: "*.md", scope: "memory", hostAutoLoaded: false },
+      { dir: "/x", glob: "*.md", scope: "memory", hostAutoLoaded: false, perFileAutoload: false },
     ];
     // No `auto`, so readDir is never consulted (a throwing reader proves it).
     const boom = (): string[] => {
