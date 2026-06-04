@@ -29,6 +29,17 @@ export interface CustomSource {
    * `~/.claude/rules` zones — see `MemhookConfig.resurfaceHostLoaded`).
    */
   hostAutoLoaded: boolean;
+  /**
+   * Whether autoload is decided PER FILE by frontmatter rather than for the whole
+   * directory. When true, each file is tested with `isHostAutoloadedFile` and the
+   * always-applied ones (Cursor `alwaysApply: true`, Windsurf `trigger:
+   * always_on`) are skipped at catalog + router time — unless `resurfaceHostLoaded`
+   * is on (same gate as `hostAutoLoaded`, applied per file). Lets a single
+   * directory mix host-autoloaded rules (skip) and manual/agent-requested ones
+   * (route) — the Cursor `.cursor/rules` shape. Orthogonal to `hostAutoLoaded`:
+   * the source as a whole is still gated by that boolean first.
+   */
+  perFileAutoload: boolean;
 }
 
 /** Expand a leading `~` / `~/` against the given home directory. */
@@ -83,6 +94,43 @@ export function listMatchingFiles(entries: readonly string[], glob: string): str
 }
 
 /**
+ * The inner text of a leading YAML frontmatter block (`---` … `\n---`), or null
+ * when the content has no terminated frontmatter. Pure + total. Single source of
+ * truth for frontmatter extraction so the two readers that depend on it —
+ * `isHostAutoloadedFile` (the per-file autoload skip) and the catalog's
+ * description extractor — can never desync on the block boundary, which would
+ * otherwise threaten the "catalog + router never disagree" invariant.
+ */
+export function frontmatterBlock(content: string): string | null {
+  if (!content.startsWith("---")) return null;
+  const end = content.indexOf("\n---", 3);
+  if (end < 0) return null; // unterminated → no block (never index 0..2: search starts at 3)
+  return content.slice(3, end);
+}
+
+/**
+ * Whether a rule file declares itself ALWAYS-APPLIED by its host — i.e. the host
+ * already injects it in full on every turn, so memhook routing it again would
+ * double-inject (the same contract as the source-level `hostAutoLoaded`, decided
+ * per file instead of per directory). Recognises the two documented per-file
+ * always-on markers in YAML frontmatter: Cursor `alwaysApply: true` and Windsurf
+ * `trigger: always_on` (docs/private/host-source-presets-SPEC-2026-06-02.md
+ * footnotes 5–6); a trailing `# comment` after the value is tolerated. Only the
+ * frontmatter block is scanned (never the body), so body prose can't
+ * false-positive. Pure + total: no frontmatter, an unterminated block, or any
+ * other value → false (the conservative direction — a missed marker routes the
+ * file, it never wrongly hides one). Drives a source's `perFileAutoload` skip.
+ */
+export function isHostAutoloadedFile(content: string): boolean {
+  const fm = frontmatterBlock(content);
+  if (fm === null) return false;
+  return (
+    /^alwaysApply:[ \t]*true[ \t]*(?:#.*)?$/m.test(fm) || // Cursor always-applied rule
+    /^trigger:[ \t]*always_on[ \t]*(?:#.*)?$/m.test(fm) // Windsurf always_on trigger
+  );
+}
+
+/**
  * Resolve untrusted YAML `customSources` into typed `CustomSource[]`. Anything
  * that isn't a usable entry (not an object, missing/blank `dir`) is dropped.
  * Never throws.
@@ -101,6 +149,7 @@ export function resolveCustomSources(raw: unknown, home: string): CustomSource[]
       glob,
       scope,
       hostAutoLoaded: e["hostAutoLoaded"] === true,
+      perFileAutoload: e["perFileAutoload"] === true,
     });
   }
   return out;
@@ -138,6 +187,8 @@ interface PresetSourceDef {
   readonly glob: string;
   readonly scope: SourceScope;
   readonly hostAutoLoaded: boolean;
+  /** Per-file autoload skip (see `CustomSource.perFileAutoload`); default false. */
+  readonly perFileAutoload?: boolean;
 }
 
 export interface PresetDef {
@@ -196,16 +247,40 @@ export const HOST_PRESETS: Record<string, PresetDef> = {
       },
     ],
   },
+  cursor: {
+    experimental: true,
+    summary: "Cursor — .cursor/rules/*.mdc (project; always-applied rules skipped)",
+    sources: [
+      // Cursor decides autoload per RULE: `alwaysApply: true` is host-loaded every
+      // turn (skip), while manual (`@`-mention) and agent-requested rules are not
+      // (route). So the source is NOT host-autoloaded as a whole — it is
+      // per-file-autoload. Plain `.md` here is IGNORED by Cursor, so the glob is
+      // `*.mdc`; nested `.cursor/rules/**` is top-level-only (globToRegExp is
+      // basename-only — see host-source-presets-SPEC footnotes 6–7).
+      {
+        base: "cwd",
+        rel: join(".cursor", "rules"),
+        glob: "*.mdc",
+        scope: "rules",
+        hostAutoLoaded: false,
+        perFileAutoload: true,
+      },
+    ],
+  },
   windsurf: {
     experimental: true,
-    summary: "Windsurf — .windsurf/rules/ (project)",
+    summary: "Windsurf — .windsurf/rules/ (project; always_on rules skipped)",
     sources: [
+      // Windsurf `trigger:` is per file: `always_on` is host-loaded (skip), while
+      // `model_decision`/`glob`/`manual` are not (route) — so per-file-autoload,
+      // not a directory-wide host-autoload (host-source-presets-SPEC footnote 5).
       {
         base: "cwd",
         rel: join(".windsurf", "rules"),
         glob: "*.md",
         scope: "rules",
         hostAutoLoaded: false,
+        perFileAutoload: true,
       },
     ],
   },
@@ -252,6 +327,7 @@ export function expandPresets(names: readonly string[], cwd: string, home: strin
         glob: s.glob,
         scope: s.scope,
         hostAutoLoaded: s.hostAutoLoaded,
+        perFileAutoload: s.perFileAutoload ?? false,
       });
     }
   }

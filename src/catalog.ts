@@ -21,7 +21,13 @@ import {
 } from "node:fs";
 import { join, basename as pathBasename } from "node:path";
 import { homedir } from "node:os";
-import { activeCustomSources, listMatchingFiles, type CustomSource } from "./sources.js";
+import {
+  activeCustomSources,
+  frontmatterBlock,
+  isHostAutoloadedFile,
+  listMatchingFiles,
+  type CustomSource,
+} from "./sources.js";
 
 export interface CatalogBuildOptions {
   cwd: string;
@@ -77,9 +83,10 @@ export function buildCatalog(opts: CatalogBuildOptions): {
   }
   // User-declared extra sources (cable onto existing project memory). Skipped
   // when host-autoloaded unless resurfaceHostLoaded — same gate as the rules.
-  const custom = activeCustomSources(opts.customSources ?? [], opts.resurfaceHostLoaded ?? false);
+  const resurface = opts.resurfaceHostLoaded ?? false;
+  const custom = activeCustomSources(opts.customSources ?? [], resurface);
   if (custom.length > 0) {
-    sections.push(emitCustomSourcesSection(custom));
+    sections.push(emitCustomSourcesSection(custom, resurface));
   }
 
   const content = sections.join("\n");
@@ -172,8 +179,17 @@ function emitRulesSection(label: string, dir: string, isCwdZone: boolean): strin
   return lines.join("\n");
 }
 
-function emitCustomSourcesSection(sources: CustomSource[]): string {
+function emitCustomSourcesSection(sources: CustomSource[], resurfaceHostLoaded: boolean): string {
   const lines: string[] = ["=== CUSTOM SOURCES ==="];
+  // Per-file autoload is decided per DIRECTORY, identically to the router
+  // (router.ts readSelected): a dir is skip-eligible iff ANY active source over it
+  // is `perFileAutoload`. Keying on the dir — not the individual source — keeps the
+  // catalog and the router in lockstep when two sources point at the same dir with
+  // different flags (otherwise the catalog could list a file the router refuses to
+  // inject). Empty when resurfacing, so the always-applied files are re-included.
+  const perFileAutoloadDirs = resurfaceHostLoaded
+    ? new Set<string>()
+    : new Set(sources.filter((s) => s.perFileAutoload).map((s) => s.dir));
   let total = 0;
   for (const src of sources) {
     let entries: string[];
@@ -187,12 +203,26 @@ function emitCustomSourcesSection(sources: CustomSource[]): string {
     // the catalog lists only those. Shared with preset detection via
     // listMatchingFiles so the two never disagree on what a source matches.
     const files = listMatchingFiles(entries, src.glob);
-    if (files.length === 0) continue;
-    lines.push(`--- ${src.dir} ---`);
+    const perFileAutoload = perFileAutoloadDirs.has(src.dir);
+    // Read each file ONCE; the content feeds both the per-file autoload skip and
+    // the description (no double read). Always-applied files (Cursor `alwaysApply`,
+    // Windsurf `always_on`) are omitted so the router can't re-inject what the host
+    // already loads. A read failure yields content="" → isHostAutoloadedFile false
+    // → listed with an empty description, exactly as a normal unreadable file.
+    const body: string[] = [];
     for (const f of files) {
-      lines.push(`${f}: ${extractDescription(join(src.dir, f))}`);
+      let content = "";
+      try {
+        content = readFileSync(join(src.dir, f), "utf8");
+      } catch {
+        content = "";
+      }
+      if (perFileAutoload && isHostAutoloadedFile(content)) continue;
+      body.push(`${f}: ${extractDescriptionFromContent(content)}`);
     }
-    total += files.length;
+    if (body.length === 0) continue;
+    lines.push(`--- ${src.dir} ---`, ...body);
+    total += body.length;
   }
   lines.push(`(${total} entries)`);
   lines.push("");
@@ -220,19 +250,22 @@ function extractDescription(file: string): string {
   } catch {
     return "";
   }
-  // YAML frontmatter description
-  if (content.startsWith("---")) {
-    const end = content.indexOf("\n---", 3);
-    if (end > 0) {
-      const fm = content.slice(3, end);
-      const descMatch = fm.match(/^description:\s*(.+?)$/m);
-      if (descMatch?.[1]) {
-        return descMatch[1]
-          .trim()
-          .replace(/^["']|["']$/g, "")
-          .slice(0, 200)
-          .replace(/\s+/g, " ");
-      }
+  return extractDescriptionFromContent(content);
+}
+
+/** Pure description extraction from file content (frontmatter `description:` else first H1). */
+function extractDescriptionFromContent(content: string): string {
+  // YAML frontmatter description — shares the block boundary with the autoload
+  // predicate via frontmatterBlock so the two readers can never desync.
+  const fm = frontmatterBlock(content);
+  if (fm !== null) {
+    const descMatch = fm.match(/^description:\s*(.+?)$/m);
+    if (descMatch?.[1]) {
+      return descMatch[1]
+        .trim()
+        .replace(/^["']|["']$/g, "")
+        .slice(0, 200)
+        .replace(/\s+/g, " ");
     }
   }
   // Fallback: first H1

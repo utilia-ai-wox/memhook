@@ -147,4 +147,102 @@ describe("buildCatalog", () => {
     buildCatalog({ ...opts, resurfaceHostLoaded: true });
     expect(readFileSync(outputPath, "utf8")).toContain("h.md");
   });
+
+  it("perFileAutoload: skips always-applied files but keeps manual ones (Cursor .mdc shape)", () => {
+    const custom = join(root, "cursor-rules");
+    mkdirSync(custom, { recursive: true });
+    // Always-applied → host already loads it → omitted to avoid double-injection.
+    writeFileSync(join(custom, "always.mdc"), "---\nalwaysApply: true\ndescription: always\n---\n");
+    // Manual / agent-requested → host never surfaces it → routed.
+    writeFileSync(join(custom, "manual.mdc"), "---\ndescription: manual rule\n---\n");
+    const opts = {
+      cwd,
+      projectsRoot,
+      globalRulesDir,
+      outputPath,
+      customSources: [
+        {
+          dir: custom,
+          glob: "*.mdc",
+          scope: "rules" as const,
+          hostAutoLoaded: false,
+          perFileAutoload: true,
+        },
+      ],
+    };
+    buildCatalog(opts);
+    const out = readFileSync(outputPath, "utf8");
+    expect(out).toContain("=== CUSTOM SOURCES ===");
+    expect(out).toContain("manual.mdc: manual rule");
+    expect(out).not.toContain("always.mdc");
+
+    // resurfaceHostLoaded re-includes the always-applied file (same gate as the
+    // source-level hostAutoLoaded), for positional re-surfacing.
+    buildCatalog({ ...opts, resurfaceHostLoaded: true });
+    expect(readFileSync(outputPath, "utf8")).toContain("always.mdc: always");
+  });
+
+  it("perFileAutoload is decided per-dir: a perFileAutoload source makes the WHOLE dir skip always-applied files, even for an overlapping non-perFileAutoload source (catalog/router lockstep)", () => {
+    // Two sources pointing at the SAME dir with different perFileAutoload flags —
+    // the exact config that would desync a per-source catalog from the per-dir
+    // router. The dir is perFileAutoload (one source says so), so the
+    // always-applied file is omitted under BOTH sources, matching the router.
+    const custom = join(root, "overlap-rules");
+    mkdirSync(custom, { recursive: true });
+    writeFileSync(join(custom, "always.mdc"), "---\nalwaysApply: true\ndescription: always\n---\n");
+    writeFileSync(join(custom, "manual.mdc"), "---\ndescription: manual\n---\n");
+    buildCatalog({
+      cwd,
+      projectsRoot,
+      globalRulesDir,
+      outputPath,
+      customSources: [
+        // Non-perFileAutoload source first (would have emitted always.mdc per-source).
+        {
+          dir: custom,
+          glob: "*.mdc",
+          scope: "rules" as const,
+          hostAutoLoaded: false,
+          perFileAutoload: false,
+        },
+        // perFileAutoload source over the same dir.
+        {
+          dir: custom,
+          glob: "*.mdc",
+          scope: "rules" as const,
+          hostAutoLoaded: false,
+          perFileAutoload: true,
+        },
+      ],
+    });
+    const out = readFileSync(outputPath, "utf8");
+    expect(out).toContain("manual.mdc: manual");
+    expect(out).not.toContain("always.mdc"); // omitted dir-wide — no lockstep gap
+  });
+
+  it("perFileAutoload: a dir of only always-applied files emits no section header", () => {
+    const custom = join(root, "all-always");
+    mkdirSync(custom, { recursive: true });
+    writeFileSync(join(custom, "a.mdc"), "---\nalwaysApply: true\n---\n");
+    writeFileSync(join(custom, "b.mdc"), "---\ntrigger: always_on\n---\n");
+    buildCatalog({
+      cwd,
+      projectsRoot,
+      globalRulesDir,
+      outputPath,
+      customSources: [
+        {
+          dir: custom,
+          glob: "*.mdc",
+          scope: "rules" as const,
+          hostAutoLoaded: false,
+          perFileAutoload: true,
+        },
+      ],
+    });
+    const out = readFileSync(outputPath, "utf8");
+    expect(out).not.toContain(`--- ${custom} ---`);
+    expect(out).not.toContain("a.mdc");
+    expect(out).not.toContain("b.mdc");
+  });
 });

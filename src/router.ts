@@ -39,6 +39,7 @@ import { PreFilter } from "./preFilter.js";
 import { createProvider } from "./providers/factory.js";
 import {
   activeCustomSources,
+  isHostAutoloadedFile,
   resolveSources,
   resolveActivePresetNames,
   detectPresets,
@@ -386,7 +387,16 @@ function readSelected(basenames: string[], cwd: string, config: MemhookConfig): 
     homedir(),
     readdirSync,
   );
-  const customDirs = activeCustomSources(allSources, config.resurfaceHostLoaded).map((s) => s.dir);
+  const activeSources = activeCustomSources(allSources, config.resurfaceHostLoaded);
+  const customDirs = activeSources.map((s) => s.dir);
+  // Dirs whose always-applied files (Cursor `alwaysApply`, Windsurf `always_on`)
+  // the catalog OMITS for a `perFileAutoload` source — so the router must skip
+  // them too, or a basename collision (same name in another routed dir) could
+  // re-inject one the catalog hid. Empty when resurfacing (the catalog re-includes
+  // them then), keeping the catalog and router in lockstep. See catalog.ts.
+  const perFileAutoloadDirs = config.resurfaceHostLoaded
+    ? new Set<string>()
+    : new Set(activeSources.filter((s) => s.perFileAutoload).map((s) => s.dir));
   const dirs = [...projectDirs, rulesDir, cwdRulesDir, ...customDirs].filter(
     (d): d is string => typeof d === "string" && d.length > 0,
   );
@@ -415,6 +425,11 @@ function readSelected(basenames: string[], cwd: string, config: MemhookConfig): 
       } catch {
         continue;
       }
+
+      // Mirror the catalog's per-file autoload omission: a host-always-applied
+      // file from a perFileAutoload dir is treated as "not in this dir" so the
+      // host's own copy is the only one in context (no double-injection).
+      if (perFileAutoloadDirs.has(dir) && isHostAutoloadedFile(content)) continue;
 
       // Cap-A1 projection check — pre-injection, allow ≥1 file always.
       const projected = additional.length + content.length + 64;
