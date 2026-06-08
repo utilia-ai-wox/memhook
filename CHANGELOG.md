@@ -5,6 +5,20 @@ All notable changes to memhook are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0](https://github.com/cyprien-bussy/memhook/compare/v0.5.0...v0.6.0) (2026-06-08)
+
+
+### Features
+
+* **catalog:** per-file autoload predicate + cursor preset ([#48](https://github.com/cyprien-bussy/memhook/issues/48)) ([4b921aa](https://github.com/cyprien-bussy/memhook/commit/4b921aa88aed0ec70f79b74c5c85491893d7b4c9))
+* **catalog:** widen routable source extensions to .md/.mdc/.txt ([#45](https://github.com/cyprien-bussy/memhook/issues/45)) ([1439b7d](https://github.com/cyprien-bussy/memhook/commit/1439b7d424e8196efec64aaad6222dc8aa34e515))
+
+
+### Documentation
+
+* strip emojis from section headers and feature bullets ([5ab730f](https://github.com/cyprien-bussy/memhook/commit/5ab730fee8098d5d18c3454b7e8c0057da8d1679))
+* sync README/CLAUDE/SPEC to the v0.5.0 source registry ([#47](https://github.com/cyprien-bussy/memhook/issues/47)) ([ec5a9ca](https://github.com/cyprien-bussy/memhook/commit/ec5a9ca60189517cdc39955c8cb72b9ea05aeaa4))
+
 ## [0.5.0](https://github.com/utilia-ai-wox/memhook/compare/v0.4.1...v0.5.0) (2026-06-03)
 
 
